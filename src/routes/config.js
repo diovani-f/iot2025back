@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const Device = require('../models/Device');
+const mqttClient = require('../mqtt/client');
+const { configTopic } = require('../mqtt/topics');
 
 /**
  * @swagger

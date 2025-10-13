@@ -1,9 +1,11 @@
 // src/index.js
+require('./src/mqtt/client');
 require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const mongoose = require('mongoose');
+
 
 // Inicializa o app
 const app = express();
@@ -22,6 +24,9 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 const configRoutes = require('./src/routes/config');
 app.use('/api', configRoutes);
+
+const readingsRoutes = require('./src/routes/readings');
+app.use('/api', readingsRoutes);
 
 // Inicializa o servidor
 const PORT = process.env.PORT || 3000;
