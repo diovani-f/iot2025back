@@ -13,6 +13,7 @@
 #include "DhtSensor.h" // Você mencionou este erro, então o incluí
 #include "Ds18b20Sensor.h"
 #include "Apds9960Sensor.h" // <--- Incluído
+#include "JoystickKy023Sensor.h" // <--- ADICIONE ESTA LINHA
 
 
 #include <Adafruit_APDS9960.h>
@@ -147,8 +148,27 @@ void addSensor(JsonObject config) {
         numSensores++;
         _mqttClient->publish(topic_config_response, ("OK: DS18B20 adicionado no pino " + String(pino)).c_str());
 
+    }else if (tipo == "joystick_ky023") {
+        JsonArray pinArray = config["pinos"]; // Espera um array "pinos"
+        if (pinArray.isNull() || pinArray.size() != 3) {
+            _mqttClient->publish(topic_config_response, "Erro: joystick_ky023 requer um array 'pinos' com 3 pinos (X, Y, SW)");
+            return;
+        }
+
+        // Aloca os 3 pinos na memória
+        byte* pins = new byte[3];
+        pins[0] = pinArray[0]; // X_PIN
+        pins[1] = pinArray[1]; // Y_PIN
+        pins[2] = pinArray[2]; // SW_PIN
+
+        // O construtor padrão usará 250ms de intervalo
+        sensores[numSensores] = new JoystickKy023Sensor(pins, "grupoX/sensor/joystick", _mqttClient);
+        sensores[numSensores]->setup();
+        numSensores++;
+
+        String msg = "OK: Joystick adicionado (X:" + String(pins[0]) + ", Y:" + String(pins[1]) + ", SW:" + String(pins[2]) + ")";
+        _mqttClient->publish(topic_config_response, msg.c_str());
     }
-    
     else if (tipo == "keypad4x4") {
         JsonArray pinArray = config["pinos"]; // Espera um array "pinos"
         if (pinArray.isNull() || pinArray.size() != 8) {
