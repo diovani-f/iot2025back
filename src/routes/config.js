@@ -50,6 +50,13 @@ router.post('/configure', async (req, res) => {
       { upsert: true, new: true }
     );
 
+    // Publica a configuração no tópico MQTT específico do ESP32
+    mqttClient.publish(configTopic(espId), JSON.stringify({
+      comando: 'CONFIG',
+      espId,
+      components
+    }));
+
     res.json({ message: 'Configuração salva com sucesso', device });
   } catch (error) {
     console.error('Erro ao salvar configuração:', error);

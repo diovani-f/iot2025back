@@ -28,6 +28,12 @@ app.use('/api', configRoutes);
 const readingsRoutes = require('./src/routes/readings');
 app.use('/api', readingsRoutes);
 
+const resendRoutes = require('./src/routes/resend');
+app.use('/api', resendRoutes);
+
+const latestReadingRoutes = require('./src/routes/latestReading');
+app.use('/api', latestReadingRoutes);
+
 // Inicializa o servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
