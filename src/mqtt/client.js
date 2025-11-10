@@ -41,7 +41,7 @@ const limparTopicosRetidos = async () => {
 
     topicos.forEach(t => {
       client.publish(t, '', { retain: true });
-      console.log(`🧹 Mensagem retida limpa em: ${t}`);
+      console.log(`Mensagem retida limpa em: ${t}`);
     });
   } catch (err) {
     console.error('Erro ao limpar tópicos retidos:', err);
@@ -67,7 +67,6 @@ const mudouSignificativamente = (a, b) => {
   return JSON.stringify(a) !== JSON.stringify(b);
 };
 
-// Decide se deve salvar no banco
 const deveSalvar = (espId, novoValor) => {
   const anterior = ultimoValor[espId];
   const agora = Date.now();
@@ -79,23 +78,22 @@ const deveSalvar = (espId, novoValor) => {
   return false;
 };
 
-// Sensores de alta frequência que sobrescrevem a última leitura
 const sensoresSobrescrever = ['joystick'];
 
 client.on('message', async (topic, message) => {
   const payload = message.toString();
 
   if (topic === 'grupoX/config/response') {
-    console.log('📡 Confirmação de configuração recebida:', payload);
+    console.log('Confirmação de configuração recebida:', payload);
     return;
   }
 
   const parts = topic.split('/');
-  if (parts.length < 5) return;
+  if (parts.length < 4) return;
 
   const tipo = parts[2];
   const base = parts[3];
-  const subtipo = parts[4];
+  const subtipo = parts[4] || 'default';
 
   const pino = Number(base.replace(/\D/g, ''));
   if (isNaN(pino)) return;
@@ -104,7 +102,7 @@ client.on('message', async (topic, message) => {
   try {
     data = JSON.parse(payload);
   } catch {
-    data = subtipo === 'switch' ? { estado: payload } : { valor: payload };
+    data = { valor: payload };
   }
 
   const espId = `${tipo}_${pino}`;
@@ -115,21 +113,19 @@ client.on('message', async (topic, message) => {
 
   try {
     if (manterHistorico) {
-      // Salva como nova leitura
       const reading = new Reading({ espId, tipo, pino, data, timestamp: new Date() });
       await reading.save();
-      console.log(`📥 [${tipo}] Leitura salva no pino ${pino}:`, data);
+      console.log(`[${tipo}] Leitura salva no pino ${pino}:`, data);
     } else {
-      // Sobrescreve última leitura
       await Reading.findOneAndUpdate(
         { espId, tipo, pino },
         { data, timestamp: new Date() },
         { upsert: true, new: true }
       );
-      console.log(`📥 [${tipo}] Última leitura atualizada no pino ${pino}:`, data);
+      console.log(`[${tipo}] Última leitura atualizada no pino ${pino}:`, data);
     }
   } catch (err) {
-    console.error(`❌ Erro ao salvar leitura de ${tipo} no pino ${pino}:`, err);
+    console.error(`Erro ao salvar leitura de ${tipo} no pino ${pino}:`, err);
   }
 });
 

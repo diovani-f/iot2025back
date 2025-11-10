@@ -2,11 +2,10 @@ const express = require('express');
 const router = express.Router();
 const Device = require('../models/Device');
 const mqttClient = require('../mqtt/client');
-const topics = require('../mqtt/topics'); // Importa o arquivo que define os tópicos
 
 /**
  * POST /api/configure
- * Salva a configuração e publica no tópico específico que o ESP escuta
+ * Salva a configuração e publica no tópico que o ESP escuta: grupoX/config
  */
 router.post('/configure', async (req, res) => {
   const { name, espId, components } = req.body;
@@ -26,14 +25,17 @@ router.post('/configure', async (req, res) => {
     // Mapeia modelos conhecidos para tipos esperados pelo ESP
     const tipoMapeado = (model) => {
       switch (model.toUpperCase()) {
-        case 'KY-023':
-          return 'joystick_ky023';
-        case 'DHT11':
-          return 'dht11';
-        case 'MPU6050':
-          return 'mpu6050';
-        default:
-          return null;
+        case 'KY-023': return 'joystick_ky023';
+        case 'DHT11': return 'dht11';
+        case 'MPU6050': return 'mpu6050';
+        case 'DS18B20': return 'ds18b20';
+        case 'HCSR04': return 'hcsr04';
+        case 'IR_RECEIVER': return 'ir_receiver';
+        case 'KEYPAD': return 'keypad';
+        case 'APDS9960': return 'apds9960';
+        case 'BOTAO': return 'botao';
+        case 'ENCODER': return 'encoder';
+        default: return model.toLowerCase(); // fallback genérico
       }
     };
 
@@ -47,17 +49,19 @@ router.post('/configure', async (req, res) => {
       }
     });
 
-    // Publica cada configuração no tópico específico do ESP
-    const topic = topics.configTopic(espId);
+    // Publica cada configuração no tópico genérico que o ESP escuta
+    const topic = 'grupoX/config';
 
     Object.entries(grouped).forEach(([tipo, pinos]) => {
-      const payload = {
-        comando: 'ADD',
-        tipo,
-        pinos
-      };
-      mqttClient.publish(topic, JSON.stringify(payload));
-      console.log(`📡 Publicado para ${topic}:`, payload);
+      pinos.forEach(pin => {
+        const payload = {
+          comando: 'ADD',
+          tipo,
+          pino: pin
+        };
+        mqttClient.publish(topic, JSON.stringify(payload));
+        console.log(`📡 Publicado para ${topic}:`, payload);
+      });
     });
 
     res.json({ message: 'Configuração salva e enviada com sucesso', device });
