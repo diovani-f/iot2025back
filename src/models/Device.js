@@ -1,19 +1,19 @@
 const mongoose = require('mongoose');
 
 const componentSchema = new mongoose.Schema({
-  name: String,         // Nome mais de boa (ex: "Sensor de Temperatura")
-  model: String,        // Modelo técnico (ex: "DS18B20")
-  type: String,         // "sensor" ou "atuador"
-  pin: Number,          // Pino conectado
-  interval: Number,     // Para sensores: tempo de leitura (ms)
-  unit: String,         // Unidade de medida (ex: °C, ppm)
-  label: String,        // Nome para exibição
-  config: Object        // Configurações específicas
+  name: String,
+  model: String,
+  type: String,
+  pin: Number,
+  interval: Number,
+  unit: String,
+  label: String,
+  config: Object
 });
 
 const deviceSchema = new mongoose.Schema({
-  name: String,         // Nome da placa
-  espId: String,        // ID único da placa
+  name: String,
+  espId: String,
   components: [componentSchema]
 });
 

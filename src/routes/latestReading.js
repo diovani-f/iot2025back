@@ -4,7 +4,7 @@ const Reading = require('../models/Reading');
 
 /**
  * @swagger
- * /api/readings/{espId}/latest:
+ * /api/latestReading/{espId}:
  *   get:
  *     tags: [Leituras]
  *     summary: Retorna a última leitura de um sensor
@@ -14,18 +14,12 @@ const Reading = require('../models/Reading');
  *         required: true
  *         schema:
  *           type: string
- *         description: Identificador do sensor (ex: mpu6050_21)
+ *         description: "Identificador do sensor (ex: mpu6050_21)"
  *     responses:
  *       200:
- *         description: Última leitura encontrada
- *         content:
- *           application/json:
- *             example:
- *               espId: mpu6050_21
- *               timestamp: 2025-10-30T09:00:00.000Z
- *               data: {...}
+ *         description: Leitura encontrada
  *       404:
- *         description: Nenhuma leitura encontrada
+ *         description: Sensor não encontrado
  */
 router.get('/readings/:espId/latest', async (req, res) => {
   try {
