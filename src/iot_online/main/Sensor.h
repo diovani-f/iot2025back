@@ -15,4 +15,7 @@ public:
     
     // Todo sensor DEVE retornar seu tipo
     virtual String getType() = 0; 
+
+    virtual void handleMqttMessage(String topic, String payload) {}
 };
+

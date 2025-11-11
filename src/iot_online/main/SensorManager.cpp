@@ -14,7 +14,8 @@
 #include "Ds18b20Sensor.h"
 #include "Apds9960Sensor.h" // <--- Incluído
 #include "JoystickKy023Sensor.h" // <--- ADICIONE ESTA LINHA
-
+#include "MotorVibracao.h"
+#include "ReleAtuador.h"
 
 #include <Adafruit_APDS9960.h>
 #include <DHT.h> // Dependência para DhtSensor
@@ -168,8 +169,53 @@ void addSensor(JsonObject config) {
 
         String msg = "OK: Joystick adicionado (X:" + String(pins[0]) + ", Y:" + String(pins[1]) + ", SW:" + String(pins[2]) + ")";
         _mqttClient->publish(topic_config_response, msg.c_str());
-    }
-    else if (tipo == "keypad4x4") {
+    } else if (tipo == "rele") {
+        int pino = config["pino"];
+        if (!config.containsKey("pino")) {
+            _mqttClient->publish(topic_config_response, "Erro: rele requer um 'pino'");
+            return;
+        }
+
+        // Verifica se o JSON tem a chave "invertido": true/false
+        bool invertido = config.containsKey("invertido") ? config["invertido"].as<bool>() : false;
+
+        sensores[numSensores] = new ReleAtuador(pino, "grupoX/atuador/rele", _mqttClient, invertido);
+        sensores[numSensores]->setup();
+        numSensores++;
+
+        String msg = "OK: Rele adicionado no pino " + String(pino);
+        _mqttClient->publish(topic_config_response, msg.c_str());
+
+    }else if (tipo == "motor_vibracao") {
+        int pino = config["pino"];
+        if (!config.containsKey("pino")) {
+            _mqttClient->publish(topic_config_response, "Erro: motor_vibracao requer um 'pino'");
+            return;
+        }
+
+        // Note o tópico base "grupoX/atuador/vibracao"
+        sensores[numSensores] = new MotorVibracao(pino, "grupoX/atuador/vibracao", _mqttClient);
+        sensores[numSensores]->setup();
+        numSensores++;
+
+        String msg = "OK: Motor de Vibracao adicionado no pino " + String(pino);
+        _mqttClient->publish(topic_config_response, msg.c_str());
+    } else if (tipo == "motor_vibracao") { // <--- VERIFIQUE ESTA LINHA
+        int pino = config["pino"];
+        if (!config.containsKey("pino")) {
+            _mqttClient->publish(topic_config_response, "Erro: motor_vibracao requer um 'pino'");
+            return;
+        }
+
+        // Note o tópico base "grupoX/atuador/vibracao"
+        sensores[numSensores] = new MotorVibracao(pino, "grupoX/atuador/vibracao", _mqttClient);
+        sensores[numSensores]->setup();
+        numSensores++;
+
+        String msg = "OK: Motor de Vibracao adicionado no pino " + String(pino);
+        _mqttClient->publish(topic_config_response, msg.c_str());
+
+    }else if (tipo == "keypad4x4") {
         JsonArray pinArray = config["pinos"]; // Espera um array "pinos"
         if (pinArray.isNull() || pinArray.size() != 8) {
             _mqttClient->publish(topic_config_response, "Erro: keypad4x4 requer um array 'pinos' com 8 pinos (4 linhas, 4 colunas)");
@@ -198,6 +244,16 @@ void sensorManagerLoop() {
     for (int i = 0; i < numSensores; i++) {
         if (sensores[i] != nullptr) {
             sensores[i]->loop();
+        }
+    }
+}
+
+void sensorManagerHandleMessage(String topic, String payload) {
+    for (int i = 0; i < numSensores; i++) {
+        if (sensores[i] != nullptr) {
+            // Cada objeto (Botao, DHT, Motor) receberá a msg.
+            // Apenas o objeto correto (Motor) irá reagir.
+            sensores[i]->handleMqttMessage(topic, payload);
         }
     }
 }

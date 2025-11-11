@@ -13,3 +13,5 @@ void addSensor(JsonObject config);
 
 // Loop principal que itera por todos os sensores
 void sensorManagerLoop();
+
+void sensorManagerHandleMessage(String topic, String payload);

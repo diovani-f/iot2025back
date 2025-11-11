@@ -43,6 +43,11 @@ void callback(char* topic, byte* payload, unsigned int length) {
              client.publish(topic_config_response, "Erro: Comando desconhecido");
         }
         // --- FIM DA ALTERAÇÃO ---
+    }else {
+        // Se não for um tópico de config, provavelmente é um tópico de atuador.
+        // Repassa a mensagem para o SensorManager, que entregará
+        // ao objeto correto (o motor, neste caso).
+        sensorManagerHandleMessage(String(topic), msg);
     }
 }
 
@@ -58,6 +63,12 @@ void reconnect_mqtt() {
                 Serial.printf("Inscrito com sucesso no tópico: %s\n", topic_config);
             } else {
                 Serial.printf("Falha ao se inscrever no tópico: %s\n", topic_config);
+            }
+
+            if(client.subscribe("grupoX/atuador/#")) {
+            Serial.println("Inscrito com sucesso no tópico de atuadores (grupoX/atuador/#)");
+            } else {
+                Serial.println("Falha ao se inscrever no tópico de atuadores");
             }
 
         } else {
