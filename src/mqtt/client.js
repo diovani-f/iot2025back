@@ -84,16 +84,17 @@ const extractValue = (tipo, data, field = 'valor') => {
     return parseFloat(data[field]);
   }
 
+  // Se não tiver campo definido, tenta converter direto
+  if (typeof data === 'number') return data;
+  if (data.valor !== undefined) return parseFloat(data.valor);
+
   // Fallbacks por tipo de sensor
   switch (tipo) {
     case 'ds18b20':
-      return parseFloat(data.valor ?? data.temperature);
+      return parseFloat(data.temperature);
     case 'dht11':
       return parseFloat(data.temperatura_c ?? data.temperature);
     default:
-      // Se não tiver campo definido, tenta converter o próprio objeto
-      if (typeof data === 'number') return parseFloat(data);
-      if (data.valor !== undefined) return parseFloat(data.valor);
       return NaN;
   }
 };
@@ -150,9 +151,12 @@ client.on('message', async (topic, message) => {
   let data;
   try {
     data = JSON.parse(payload);
+    console.log("✅ Payload é JSON válido:", data);
   } catch {
     data = { valor: parseFloat(payload) };
+    console.log("⚠️ Payload não era JSON, convertido para:", data);
   }
+
   console.log("📊 Dados interpretados:", data);
 
   const espId = `${tipo}_${pino}`;
