@@ -79,13 +79,25 @@ const deveSalvar = (espId, novoValor) => {
 
 // --- Motor de Regras ---
 const extractValue = (tipo, data, field = 'valor') => {
-  if (data[field] !== undefined) return parseFloat(data[field]);
+  // Se a regra especificou um campo, tenta extrair esse atributo
+  if (field && data[field] !== undefined) {
+    return parseFloat(data[field]);
+  }
+
+  // Fallbacks por tipo de sensor
   switch (tipo) {
-    case 'ds18b20': return parseFloat(data.valor ?? data.temperature);
-    case 'dht11': return parseFloat(data.temperatura_c ?? data.temperature);
-    default: return parseFloat(data.valor);
+    case 'ds18b20':
+      return parseFloat(data.valor ?? data.temperature);
+    case 'dht11':
+      return parseFloat(data.temperatura_c ?? data.temperature);
+    default:
+      // Se não tiver campo definido, tenta converter o próprio objeto
+      if (typeof data === 'number') return parseFloat(data);
+      if (data.valor !== undefined) return parseFloat(data.valor);
+      return NaN;
   }
 };
+
 const checkCondition = (op, v, a, b) => {
   switch (op) {
     case '>=': return v >= a;
