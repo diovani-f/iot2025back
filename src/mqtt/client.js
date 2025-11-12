@@ -79,25 +79,26 @@ const deveSalvar = (espId, novoValor) => {
 
 // --- Motor de Regras ---
 const extractValue = (tipo, data, field = 'valor') => {
-  // Se a regra especificou um campo, tenta extrair esse atributo
+  // tenta pegar o campo indicado
   if (field && data[field] !== undefined) {
     return parseFloat(data[field]);
   }
 
-  // Se não tiver campo definido, tenta converter direto
+  // se não tiver field, tenta alguns padrões
   if (typeof data === 'number') return data;
   if (data.valor !== undefined) return parseFloat(data.valor);
 
-  // Fallbacks por tipo de sensor
+  // fallback por tipo
   switch (tipo) {
     case 'ds18b20':
-      return parseFloat(data.temperature);
+      return parseFloat(data.temperatura_c ?? data.temperature);
     case 'dht11':
       return parseFloat(data.temperatura_c ?? data.temperature);
     default:
       return NaN;
   }
 };
+
 
 const checkCondition = (op, v, a, b) => {
   switch (op) {
