@@ -88,7 +88,7 @@ client.on('message', async (topic, message) => {
   try {
     // Ignora confirmações de configuração
     if (topic === 'grupoX/config/response') {
-      console.log('📡 Confirmação de configuração recebida:', payload);
+      console.log('Confirmação de configuração recebida:', payload);
       return;
     }
 
@@ -129,10 +129,10 @@ client.on('message', async (topic, message) => {
     });
 
     await reading.save();
-    console.log(`📥 [${tipo}] Leitura salva (${subtipo}) no pino ${pinNumber}:`, data);
+    console.log(`[${tipo}] Leitura salva (${subtipo}) no pino ${pinNumber}:`, data);
 
   } catch (err) {
-    console.error('❌ Erro ao processar mensagem MQTT:', err);
+    console.error('Erro ao processar mensagem MQTT:', err);
   }
 });
 

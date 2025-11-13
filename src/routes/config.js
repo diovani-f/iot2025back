@@ -60,7 +60,7 @@ router.post('/configure', async (req, res) => {
           pino: pin
         };
         mqttClient.publish(topic, JSON.stringify(payload));
-        console.log(`📡 Publicado para ${topic}:`, payload);
+        console.log(`Publicado para ${topic}:`, payload);
       });
     });
 

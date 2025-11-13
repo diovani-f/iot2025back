@@ -22,11 +22,15 @@ const configRoutes = require('./src/routes/config');
 const readingsRoutes = require('./src/routes/readings');
 const resendRoutes = require('./src/routes/resend');
 const latestReadingRoutes = require('./src/routes/latestReading');
+const actuatorRoutes = require('./src/routes/actuator');
+const rulesRoutes = require('./src/routes/rules');
 
 app.use('/api', configRoutes);
 app.use('/api', readingsRoutes);
 app.use('/api', resendRoutes);
 app.use('/api', latestReadingRoutes);
+app.use('/api/actuator', actuatorRoutes);
+app.use('/api/rules', rulesRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
