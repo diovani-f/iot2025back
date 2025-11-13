@@ -16,6 +16,7 @@
 #include "JoystickKy023Sensor.h" // <--- ADICIONE ESTA LINHA
 #include "MotorVibracao.h"
 #include "ReleAtuador.h"
+#include "LedAtuador.h" // <--- ADICIONE ESTA LINHA
 
 #include <Adafruit_APDS9960.h>
 #include <DHT.h> // Dependência para DhtSensor
@@ -215,7 +216,21 @@ void addSensor(JsonObject config) {
         String msg = "OK: Motor de Vibracao adicionado no pino " + String(pino);
         _mqttClient->publish(topic_config_response, msg.c_str());
 
-    }else if (tipo == "keypad4x4") {
+    } else if (tipo == "led") {
+        int pino = config["pino"];
+        if (!config.containsKey("pino")) {
+            _mqttClient->publish(topic_config_response, "Erro: led requer um 'pino'");
+            return;
+        }
+
+        sensores[numSensores] = new LedAtuador(pino, "grupoX/atuador/led", _mqttClient);
+        sensores[numSensores]->setup();
+        numSensores++;
+
+        String msg = "OK: LED adicionado no pino " + String(pino);
+        _mqttClient->publish(topic_config_response, msg.c_str());
+
+    } else if (tipo == "keypad4x4") {
         JsonArray pinArray = config["pinos"]; // Espera um array "pinos"
         if (pinArray.isNull() || pinArray.size() != 8) {
             _mqttClient->publish(topic_config_response, "Erro: keypad4x4 requer um array 'pinos' com 8 pinos (4 linhas, 4 colunas)");

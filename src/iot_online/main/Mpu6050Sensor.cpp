@@ -1,25 +1,21 @@
 #include "Mpu6050Sensor.h"
 #include <Arduino.h>
-#include <ArduinoJson.h> // <--- Usaremos para CRIAR JSON
+#include <ArduinoJson.h> // <--- Já estava aqui
 
 // --- Implementação do Construtor ---
-// Usamos o barramento I2C '0' (o ESP32 tem 0 e 1)
 Mpu6050Sensor::Mpu6050Sensor(int sdaPin, int sclPin, String topic_base, PubSubClient* mqttClient, unsigned long interval) 
-    : _i2c_bus(new TwoWire(0)) { // Inicializa o ponteiro do barramento I2C
+    : _i2c_bus(new TwoWire(0)) {
     
     _sdaPin = sdaPin;
     _sclPin = sclPin;
     _client = mqttClient;
     _interval = interval;
     _lastReadTime = 0;
-    
-    // Tópico único baseado nos pinos SDA/SCL
     _topic = topic_base + "/sda" + String(sdaPin);
 }
 
 // --- Implementação do Destrutor ---
 Mpu6050Sensor::~Mpu6050Sensor() {
-    // Libera a memória alocada para o barramento I2C
     delete _i2c_bus;
 }
 
@@ -29,15 +25,19 @@ void Mpu6050Sensor::setup() {
     _i2c_bus->begin(_sdaPin, _sclPin);
 
     // 2. Inicia o sensor MPU6050 neste barramento
-    if (!_mpu.begin(MPU6050_I2CADDR_DEFAULT, _i2c_bus)) {
-            Serial.printf("[MPU6050] Erro ao inicializar sensor nos pinos SDA:%d, SCL:%d\n", _sdaPin, _sclPin);
-        // (Em um caso real, poderíamos tentar reiniciar ou marcar como falho)
+    // CORREÇÃO 1: A função 'begin' espera o endereço (opcional) primeiro, 
+    // e o barramento I2C (wire) depois.
+    if (!_mpu.begin(MPU6050_I2CADDR_DEFAULT, _i2c_bus)) { 
+        Serial.printf("[MPU6050] Erro ao inicializar sensor nos pinos SDA:%d, SCL:%d\n", _sdaPin, _sclPin);
         return;
     }
 
     // 3. Configura os ranges (opcional, mas recomendado)
     _mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-    _mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+    
+    // CORREÇÃO 2: A biblioteca usa _DEG (Degrees) e não _DPS (Degrees Per Second)
+    _mpu.setGyroRange(MPU6050_RANGE_500_DEG); 
+    
     _mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
 
     Serial.printf("[MPU6050] Sensor inicializado. SDA:%d, SCL:%d. Publicando em %s\n", _sdaPin, _sclPin, _topic.c_str());
@@ -45,38 +45,44 @@ void Mpu6050Sensor::setup() {
 
 // --- Implementação do Loop ---
 void Mpu6050Sensor::loop() {
-    // Respeita o intervalo de leitura
     if (millis() - _lastReadTime >= _interval) {
         _lastReadTime = millis();
 
         sensors_event_t a, g, temp;
-        // Pega todos os eventos (leituras) de uma vez
         _mpu.getEvent(&a, &g, &temp);
 
         // --- Cria o Payload JSON ---
-        // Aloca 256 bytes para o JSON. Mais que suficiente.
         DynamicJsonDocument doc(256);
 
-        // Adiciona os valores do Acelerômetro
-        doc["accel_x"] = a.acceleration.x;
-        doc["accel_y"] = a.acceleration.y;
-        doc["accel_z"] = a.acceleration.z;
-
-        // Adiciona os valores do Giroscópio
-        doc["gyro_x"] = g.gyro.x;
-        doc["gyro_y"] = g.gyro.y;
-        doc["gyro_z"] = g.gyro.z;
+        // ADIÇÃO: Inclui um status no JSON
+        doc["status"] = "OK";
         
-        // Adiciona o valor da Temperatura
-        doc["temp_c"] = temp.temperature;
+        // Cria um sub-objeto para o acelerômetro
+        JsonObject accel = doc.createNestedObject("acelerometro");
+        accel["x"] = a.acceleration.x;
+        accel["y"] = a.acceleration.y;
+        accel["z"] = a.acceleration.z;
+
+        // Cria um sub-objeto para o giroscópio
+        JsonObject gyro = doc.createNestedObject("giroscopio");
+        gyro["x"] = g.gyro.x;
+        gyro["y"] = g.gyro.y;
+        gyro["z"] = g.gyro.z;
+        
+        doc["temperatura_c"] = temp.temperature;
 
         // --- Publica o JSON ---
         char payload[256];
-        // Converte o documento JSON em uma string
         serializeJson(doc, payload, sizeof(payload));
 
         Serial.printf("[MPU6050] SDA %d - Publicando JSON: %s\n", _sdaPin, payload);
-        _client->publish(_topic.c_str(), payload);
+        
+        // --- CORREÇÃO DE SEGURANÇA ---
+        if (_client->connected()) {
+            _client->publish(_topic.c_str(), payload);
+        } else {
+            Serial.println("[MPU6050] Erro: MQTT desconectado. Mensagem não enviada.");
+        }
     }
 }
 

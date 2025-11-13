@@ -1,9 +1,8 @@
 #include "Apds9960Sensor.h"
 #include <Arduino.h>
-#include <ArduinoJson.h> // Para publicar a Cor como JSON
+#include <ArduinoJson.h>
 
 // --- Implementação do Construtor ---
-// CORREÇÃO: Removida a inicialização redundante de _apds()
 Apds9960Sensor::Apds9960Sensor(int sdaPin, int sclPin, String topic_base, PubSubClient* mqttClient, unsigned long interval) 
     : _i2c_bus(new TwoWire(1)) {
     
@@ -12,29 +11,24 @@ Apds9960Sensor::Apds9960Sensor(int sdaPin, int sclPin, String topic_base, PubSub
     _client = mqttClient;
     _interval = interval;
     _lastReadTime = 0;
-    
-    // Tópico único baseado no pino SDA
     _baseTopic = topic_base + "/sda" + String(sdaPin);
 }
 
 // --- Implementação do Destrutor ---
 Apds9960Sensor::~Apds9960Sensor() {
-    delete _i2c_bus; // Libera a memória alocada para o barramento I2C
+    delete _i2c_bus;
 }
 
 // --- Implementação do Setup ---
 void Apds9960Sensor::setup() {
-    // 1. Inicia o barramento I2C nos pinos especificados
     _i2c_bus->begin(_sdaPin, _sclPin);
 
-    // 2. Inicia o sensor APDS-9960 neste barramento
-    // CORREÇÃO: A biblioteca espera o endereço (0x39) e o ponteiro do barramento
-    if (!_apds.begin(10, APDS9960_AGAIN_4X, 0x39, _i2c_bus)) { // <-- VERSÃO CORRIGIDA
+    // CORREÇÃO: Usa a função 'begin' correta para a biblioteca
+    if (!_apds.begin(10, APDS9960_AGAIN_4X, 0x39, _i2c_bus)) {
         Serial.printf("[APDS-9960] Erro ao inicializar sensor nos pinos SDA:%d, SCL:%d\n", _sdaPin, _sclPin);
         return;
     }
 
-    // 3. Habilita todas as funções do sensor
     _apds.enableProximity(true);
     _apds.enableGesture(true);
     _apds.enableColor(true); 
@@ -56,46 +50,57 @@ void Apds9960Sensor::loop() {
 
     if (gestureStr != "") {
         Serial.printf("[APDS-9960] SDA %d - Gesto: %s\n", _sdaPin, gestureStr.c_str());
+        
+        // --- ALTERADO PARA JSON ---
+        DynamicJsonDocument doc(64);
+        doc["status"] = "OK";
+        doc["gesto"] = gestureStr;
+        char payload[64];
+        serializeJson(doc, payload, sizeof(payload));
+
         String gestureTopic = _baseTopic + "/gesture";
-        _client->publish(gestureTopic.c_str(), gestureStr.c_str());
+        
+        if (_client->connected()) {
+            _client->publish(gestureTopic.c_str(), payload);
+        }
+        // --- FIM DA ALTERAÇÃO ---
     }
 
     // --- 2. Checagem de Proximidade/Cor/Luz (Time-driven) ---
     if (millis() - _lastReadTime >= _interval) {
         _lastReadTime = millis();
 
-        // Leitura de Proximidade
+        // --- DADOS COMBINADOS EM UM ÚNICO JSON ---
+        
+        // Faz todas as leituras
         uint8_t prox = _apds.readProximity();
-        Serial.printf("[APDS-9960] SDA %d - Proximidade: %d\n", _sdaPin, prox);
-        String proxTopic = _baseTopic + "/proximity";
-        char proxPayload[5];
-        itoa(prox, proxPayload, 10);
-        _client->publish(proxTopic.c_str(), proxPayload);
-
-        // Leitura de Cor (R, G, B) e Luz Ambiente (C - Clear)
         uint16_t r, g, b, c;
         _apds.getColorData(&r, &g, &b, &c);
 
-        // Publica a Luz Ambiente
-        Serial.printf("[APDS-9960] SDA %d - Luz Ambiente: %d\n", _sdaPin, c);
-        String ambientTopic = _baseTopic + "/ambient_light";
-        char ambientPayload[7];
-        itoa(c, ambientPayload, 10);
-        _client->publish(ambientTopic.c_str(), ambientPayload);
+        // Cria o documento JSON
+        DynamicJsonDocument doc(256);
+        doc["status"] = "OK";
+        doc["proximidade"] = prox;
+        doc["luz_ambiente"] = c;
+        
+        // Cria um sub-objeto para a cor
+        JsonObject cor = doc.createNestedObject("cor");
+        cor["r"] = r;
+        cor["g"] = g;
+        cor["b"] = b;
+        
+        // Serializa o JSON
+        char payload[256];
+        serializeJson(doc, payload, sizeof(payload));
 
-        // Publica a Cor como um JSON
-        DynamicJsonDocument doc(128);
-        doc["r"] = r;
-        doc["g"] = g;
-        doc["b"] = b;
+        Serial.printf("[APDS-9960] SDA %d - Publicando dados: %s\n", _sdaPin, payload);
         
-        char colorPayload[64];
-        serializeJson(doc, colorPayload, sizeof(colorPayload));
-        Serial.printf("[APDS-9960] SDA %d - Cor: %s\n", _sdaPin, colorPayload);
-        String colorTopic = _baseTopic + "/color";
-        
-        // CORREÇÃO: 'c_c_str()' corrigido para 'c_str()'
-        _client->publish(colorTopic.c_str(), colorPayload);
+        // Publica no tópico "/data"
+        String dataTopic = _baseTopic + "/data";
+        if (_client->connected()) {
+            _client->publish(dataTopic.c_str(), payload);
+        }
+        // --- FIM DA ALTERAÇÃO ---
     }
 }
 
