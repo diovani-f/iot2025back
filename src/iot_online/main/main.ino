@@ -11,10 +11,12 @@ WiFiClientSecure espClient;
 PubSubClient client(espClient);
 
 
+// Em main.ino
+
 void callback(char* topic, byte* payload, unsigned int length) {
     Serial.print("Mensagem recebida no tópico: ");
     Serial.println(topic);
-
+    
     payload[length] = '\0';
     String msg = (char*)payload;
     Serial.println("Payload: " + msg);
@@ -31,22 +33,42 @@ void callback(char* topic, byte* payload, unsigned int length) {
             return;
         }
 
-        // --- ALTERAÇÃO AQUI ---
-        // Em vez de extrair os pinos aqui...
         JsonObject config = doc.as<JsonObject>();
-        const char* comando = config["comando"];
+        
+        // --- VERIFICAÇÃO DE COMANDO ADICIONADA AQUI ---
+        if (!config.containsKey("comando")) {
+             client.publish(topic_config_response, "Erro: JSON nao contem a chave 'comando'");
+             return;
+        }
+        
+        String comando = config["comando"]; // Pega o comando (ex: "ADD", "RESTART")
 
-        if (String(comando) == "ADD") {
-            // ...nós passamos o objeto JSON de configuração inteiro
-            addSensor(config); 
+        if (comando == "RESTART") {
+            // 1. Comando de Reinicialização encontrado
+            Serial.println("[Comando] Recebido comando de REINICIALIZAÇÃO!");
+            
+            // 2. Envia uma confirmação "OK"
+            client.publish(topic_config_response, "OK: Reiniciando o dispositivo...");
+            
+            // 3. Espera 1 segundo para dar tempo da mensagem MQTT ser enviada
+            delay(1000); 
+            
+            // 4. Reinicia o ESP32
+            ESP.restart();
+
+        } else if (comando == "ADD") {
+            // 5. Se for "ADD", envia para o SensorManager (como antes)
+            addSensor(config);
+            
         } else {
-             client.publish(topic_config_response, "Erro: Comando desconhecido");
+            // 6. Se for qualquer outra coisa (ex: "REMOVE" que não fizemos)
+             String msgErro = "Erro: Comando desconhecido '" + comando + "'";
+             client.publish(topic_config_response, msgErro.c_str());
         }
         // --- FIM DA ALTERAÇÃO ---
-    }else {
-        // Se não for um tópico de config, provavelmente é um tópico de atuador.
-        // Repassa a mensagem para o SensorManager, que entregará
-        // ao objeto correto (o motor, neste caso).
+        
+    } else {
+        // Se não for um tópico de config, é um tópico de atuador
         sensorManagerHandleMessage(String(topic), msg);
     }
 }
