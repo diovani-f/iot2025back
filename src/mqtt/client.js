@@ -5,10 +5,6 @@ const Device = require('../models/Device');
 const Reading = require('../models/Reading');
 const Rule = require('../models/Rule');
 
-// -------------------------------------------------
-// CONFIG MQTT
-// -------------------------------------------------
-
 const options = {
   host: 'wa2fc908.ala.us-east-1.emqxsl.com',
   port: 8883,
@@ -20,18 +16,12 @@ const options = {
 const client = mqtt.connect(options);
 
 client.on('connect', () => {
-  console.log("🚀 Conectado ao broker MQTT");
+  console.log("Conectado ao broker MQTT");
 
   client.subscribe('grupoX/sensor/#');
   client.subscribe('grupoX/config/response');
 });
 
-// -------------------------------------------------
-// MAPEAMENTO DO TIPO DO MQTT → MODEL DO BANCO
-// -------------------------------------------------
-
-// O ESP publica "joystick" → no banco está "KY-023"
-// O ESP publica "led" → no banco está "LED"
 const mapTipoToModel = (tipo) => {
   const map = {
     joystick: "KY-023",
@@ -53,18 +43,12 @@ const mapTipoToModel = (tipo) => {
   return map[tipo.toLowerCase()] || tipo.toUpperCase();
 };
 
-// -------------------------------------------------
-// EXTRACT VALUE
-// -------------------------------------------------
 
 const extractValue = (data, field) => {
   if (!data || !field) return null;
   return data[field] !== undefined ? data[field] : null;
 };
 
-// -------------------------------------------------
-// CHECK DE CONDIÇÃO
-// -------------------------------------------------
 
 const checkCondition = (op, v, a, b) => {
   if (v === null || v === undefined) return false;
@@ -81,9 +65,6 @@ const checkCondition = (op, v, a, b) => {
   }
 };
 
-// -------------------------------------------------
-// PUBLICAÇÃO DO ATUADOR
-// -------------------------------------------------
 
 const publishAction = (action) => {
   const topic = `grupoX/atuador/${action.tipo}/${action.pino}`;
@@ -92,9 +73,6 @@ const publishAction = (action) => {
   console.log(`⚡ Atuador acionado → ${topic}: ${action.command}`);
 };
 
-// -------------------------------------------------
-// PROCESSAMENTO DA MENSAGEM MQTT
-// -------------------------------------------------
 
 client.on('message', async (topic, msg) => {
   try {
@@ -114,9 +92,6 @@ client.on('message', async (topic, msg) => {
     const tipoBruto = parts[2];
     const modelEsperado = mapTipoToModel(tipoBruto);
 
-    // -------------------------------------------------
-    // EXTRAIR PINO
-    // -------------------------------------------------
 
     let pino = null;
 
@@ -138,9 +113,6 @@ client.on('message', async (topic, msg) => {
       return;
     }
 
-    // -------------------------------------------------
-    // PARSE DO PAYLOAD
-    // -------------------------------------------------
 
     let data;
     try {
@@ -149,9 +121,6 @@ client.on('message', async (topic, msg) => {
       data = { valor: payload };
     }
 
-    // -------------------------------------------------
-    // ENCONTRAR DEVICE CORRESPONDENTE (CORREÇÃO FINAL)
-    // -------------------------------------------------
 
     const device = await Device.findOne({
       components: {
@@ -163,15 +132,11 @@ client.on('message', async (topic, msg) => {
     });
 
     if (!device) {
-      console.log(`⚠ Nenhum device com model=${modelEsperado}, pin=${pino}`);
+      console.log(`Nenhum device com model=${modelEsperado}, pin=${pino}`);
       return;
     }
 
     const espId = device.espId;
-
-    // -------------------------------------------------
-    // SALVAR LEITURA
-    // -------------------------------------------------
 
     await new Reading({
       espId,
@@ -181,10 +146,6 @@ client.on('message', async (topic, msg) => {
     }).save();
 
     console.log(`💾 Salvo para ESP ${espId} → ${tipoBruto} (${pino})`, data);
-
-    // -------------------------------------------------
-    // BUSCAR REGRAS
-    // -------------------------------------------------
 
     const rules = await Rule.find({
       deviceId: espId,
@@ -199,9 +160,6 @@ client.on('message', async (topic, msg) => {
 
     console.log(`📋 ${rules.length} regras encontradas para ${tipoBruto}, pino ${pino}`);
 
-    // -------------------------------------------------
-    // EXECUTAR REGRAS
-    // -------------------------------------------------
 
     for (const rule of rules) {
       console.log(`➡ Avaliando regra: ${rule.name}`);
@@ -218,15 +176,15 @@ client.on('message', async (topic, msg) => {
       );
 
       if (ok) {
-        console.log("✅ Condição satisfeita → executando ação");
+        console.log("Condição satisfeita → executando ação");
         publishAction(rule.action);
       } else {
-        console.log("❌ Condição não satisfeita");
+        console.log("Condição não satisfeita");
       }
     }
 
   } catch (err) {
-    console.error("❌ Erro no processamento MQTT:", err);
+    console.error("Erro no processamento MQTT:", err);
   }
 });
 
