@@ -1,7 +1,13 @@
+// src/mqtt/client.js
+
 const mqtt = require('mqtt');
-const Reading = require('../models/Reading');
 const Device = require('../models/Device');
+const Reading = require('../models/Reading');
 const Rule = require('../models/Rule');
+
+// -------------------------------------------------
+// CONFIG MQTT
+// -------------------------------------------------
 
 const options = {
   host: 'wa2fc908.ala.us-east-1.emqxsl.com',
@@ -13,201 +19,217 @@ const options = {
 
 const client = mqtt.connect(options);
 
-// Mapeia modelo para tipo
-const mapearTipo = (model) => {
-  switch (model.toUpperCase()) {
-    case 'KY-023': return 'joystick';
-    case 'DHT11': return 'dht11';
-    case 'MPU6050': return 'mpu6050';
-    case 'DS18B20': return 'ds18b20';
-    default: return model.toLowerCase();
-  }
-};
+client.on('connect', () => {
+  console.log("🚀 Conectado ao broker MQTT");
 
-// Limpa tópicos retidos
-const limparTopicosRetidos = async () => {
-  try {
-    const devices = await Device.find();
-    const topicos = [];
-
-    devices.forEach(device => {
-      device.components?.forEach(c => {
-        if (typeof c.model === 'string' && typeof c.pin === 'number') {
-          const tipo = mapearTipo(c.model);
-          const base = `sw${c.pin}`;
-          topicos.push(`grupoX/sensor/${tipo}/${base}/position`);
-          topicos.push(`grupoX/sensor/${tipo}/${base}/switch`);
-        }
-      });
-    });
-
-    topicos.forEach(t => {
-      client.publish(t, '', { retain: true });
-      console.log(`Mensagem retida limpa em: ${t}`);
-    });
-  } catch (err) {
-    console.error('Erro ao limpar tópicos retidos:', err);
-  }
-};
-
-client.on('connect', async () => {
-  console.log('Conectado ao broker MQTT');
-  await limparTopicosRetidos();
-
-  client.subscribe('grupoX/config/response');
   client.subscribe('grupoX/sensor/#');
-  client.subscribe('grupoX/atuador/botao');
+  client.subscribe('grupoX/config/response');
 });
 
-// Buffer de últimas leituras
-const ultimoValor = {};
-const mudouSignificativamente = (a, b) => {
-  if (a.x !== undefined && b.x !== undefined) {
-    return Math.abs(a.x - b.x) > 10 || Math.abs(a.y - b.y) > 10;
-  }
-  return JSON.stringify(a) !== JSON.stringify(b);
-};
-const deveSalvar = (espId, novoValor) => {
-  const anterior = ultimoValor[espId];
-  const agora = Date.now();
-  if (!anterior || agora - anterior.timestamp > 1000 || mudouSignificativamente(anterior.data, novoValor)) {
-    ultimoValor[espId] = { data: novoValor, timestamp: agora };
-    return true;
-  }
-  return false;
-};
+// -------------------------------------------------
+// MAPEAMENTO DO TIPO DO MQTT → MODEL DO BANCO
+// -------------------------------------------------
 
-// --- Motor de Regras ---
-const extractValue = (tipo, data, field = 'valor') => {
-  // tenta pegar o campo indicado
-  if (field && data[field] !== undefined) {
-    return parseFloat(data[field]);
-  }
+// O ESP publica "joystick" → no banco está "KY-023"
+// O ESP publica "led" → no banco está "LED"
+const mapTipoToModel = (tipo) => {
+  const map = {
+    joystick: "KY-023",
+    joystick_ky023: "KY-023",
+    led: "LED",
+    botao: "BOTAO",
+    encoder: "ENCODER",
+    rele: "RELE",
+    motor_vibracao: "MOTOR_VIBRACAO",
+    dht11: "DHT11",
+    dht22: "DHT22",
+    ds18b20: "DS18B20",
+    hcsr04: "HCSR04",
+    mpu6050: "MPU6050",
+    apds9960: "APDS9960",
+    keypad4x4: "KEYPAD4X4"
+  };
 
-  // se não tiver field, tenta alguns padrões
-  if (typeof data === 'number') return data;
-  if (data.valor !== undefined) return parseFloat(data.valor);
-
-  // fallback por tipo
-  switch (tipo) {
-    case 'ds18b20':
-      return parseFloat(data.temperatura_c ?? data.temperature);
-    case 'dht11':
-      return parseFloat(data.temperatura_c ?? data.temperature);
-    default:
-      return NaN;
-  }
+  return map[tipo.toLowerCase()] || tipo.toUpperCase();
 };
 
+// -------------------------------------------------
+// EXTRACT VALUE
+// -------------------------------------------------
+
+const extractValue = (data, field) => {
+  if (!data || !field) return null;
+  return data[field] !== undefined ? data[field] : null;
+};
+
+// -------------------------------------------------
+// CHECK DE CONDIÇÃO
+// -------------------------------------------------
 
 const checkCondition = (op, v, a, b) => {
+  if (v === null || v === undefined) return false;
+
   switch (op) {
     case '>=': return v >= a;
     case '<=': return v <= a;
+    case '>': return v > a;
+    case '<': return v < a;
     case '==': return v == a;
     case '!=': return v != a;
-    case '>':  return v > a;
-    case '<':  return v < a;
-    case 'between': return v >= a && v <= (b ?? a);
+    case 'between': return v >= a && v <= b;
     default: return false;
   }
 };
 
+// -------------------------------------------------
+// PUBLICAÇÃO DO ATUADOR
+// -------------------------------------------------
+
 const publishAction = (action) => {
   const topic = `grupoX/atuador/${action.tipo}/${action.pino}`;
   client.publish(topic, action.command);
-  console.log(`🚀 Regra acionada → ${topic}: ${action.command}`);
 
-  const legacyTopic = `grupoX/sensor/${action.tipo}/sw${action.pino}/switch`;
-  client.publish(legacyTopic, action.command);
-  console.log(`🚀 Regra acionada (compatibilidade) → ${legacyTopic}: ${action.command}`);
+  console.log(`⚡ Atuador acionado → ${topic}: ${action.command}`);
 };
 
-// --- Processa mensagens MQTT ---
-client.on('message', async (topic, message) => {
-  const payload = message.toString();
-  console.log("📩 Mensagem recebida:", { topic, payload });
+// -------------------------------------------------
+// PROCESSAMENTO DA MENSAGEM MQTT
+// -------------------------------------------------
 
-  if (topic === 'grupoX/config/response') {
-    console.log('Confirmação de configuração recebida:', payload);
-    return;
-  }
-
-  const parts = topic.split('/');
-  if (parts.length < 4) {
-    console.log("⚠️ Tópico ignorado, partes insuficientes:", parts);
-    return;
-  }
-
-  const tipo = parts[2];
-  const base = parts[3];
-  const subtipo = parts[4] || 'default';
-
-  const pino = Number(base.replace(/\D/g, ''));
-  if (isNaN(pino)) {
-    console.log("⚠️ Pino inválido extraído de base:", base);
-    return;
-  }
-
-  let data;
+client.on('message', async (topic, msg) => {
   try {
-    data = JSON.parse(payload);
-    console.log("✅ Payload é JSON válido:", data);
-  } catch {
-    data = { valor: parseFloat(payload) };
-    console.log("⚠️ Payload não era JSON, convertido para:", data);
-  }
+    const payload = msg.toString();
+    console.log("\n📩 Mensagem recebida:", topic, payload);
 
-  console.log("📊 Dados interpretados:", data);
+    if (topic === 'grupoX/config/response') {
+      console.log("🔧 Resposta de config:", payload);
+      return;
+    }
 
-  const espId = `${tipo}_${pino}`;
-  console.log("🔑 Identificador calculado:", espId);
+    const parts = topic.split('/');
 
-  const podeSalvar = subtipo === 'switch' || deveSalvar(espId, data);
-  console.log("💾 Deve salvar?", podeSalvar, "Subtipo:", subtipo);
+    if (parts.length < 3) return;
 
-  if (!podeSalvar) return;
+    // grupoX/sensor/<tipo>/xxxx
+    const tipoBruto = parts[2];
+    const modelEsperado = mapTipoToModel(tipoBruto);
 
-  try {
-    const reading = new Reading({ espId, tipo, pino, data, timestamp: new Date() });
-    await reading.save();
-    console.log(`[${tipo}] ✅ Leitura salva no pino ${pino}:`, data);
-  } catch (err) {
-    console.error(`❌ Erro ao salvar leitura de ${tipo} no pino ${pino}:`, err);
-  }
+    // -------------------------------------------------
+    // EXTRAIR PINO
+    // -------------------------------------------------
 
-  try {
-    console.log("🔍 Buscando regras com filtro:", { deviceId: espId, "sensor.tipo": tipo, "sensor.pino": pino });
-    const rules = await Rule.find({ deviceId: espId, "sensor.tipo": tipo, "sensor.pino": pino });
-    console.log("📋 Regras encontradas:", rules.length);
+    let pino = null;
+
+    // Caso normal:
+    // grupoX/sensor/dht11/12
+    if (parts.length === 4) {
+      pino = Number(parts[3]);
+    }
+
+    // Joystick:
+    // grupoX/sensor/joystick/sw25/position
+    else if (parts.length >= 5) {
+      const identifier = parts[3];
+      pino = Number(identifier.replace(/\D/g, ''));
+    }
+
+    if (isNaN(pino)) {
+      console.log("❌ Não foi possível extrair pino do tópico:", topic);
+      return;
+    }
+
+    // -------------------------------------------------
+    // PARSE DO PAYLOAD
+    // -------------------------------------------------
+
+    let data;
+    try {
+      data = JSON.parse(payload);
+    } catch {
+      data = { valor: payload };
+    }
+
+    // -------------------------------------------------
+    // ENCONTRAR DEVICE CORRESPONDENTE (CORREÇÃO FINAL)
+    // -------------------------------------------------
+
+    const device = await Device.findOne({
+      components: {
+        $elemMatch: {
+          model: modelEsperado,
+          pin: pino
+        }
+      }
+    });
+
+    if (!device) {
+      console.log(`⚠ Nenhum device com model=${modelEsperado}, pin=${pino}`);
+      return;
+    }
+
+    const espId = device.espId;
+
+    // -------------------------------------------------
+    // SALVAR LEITURA
+    // -------------------------------------------------
+
+    await new Reading({
+      espId,
+      tipo: tipoBruto,
+      pino,
+      data
+    }).save();
+
+    console.log(`💾 Salvo para ESP ${espId} → ${tipoBruto} (${pino})`, data);
+
+    // -------------------------------------------------
+    // BUSCAR REGRAS
+    // -------------------------------------------------
+
+    const rules = await Rule.find({
+      deviceId: espId,
+      "sensor.tipo": tipoBruto,
+      "sensor.pino": pino
+    });
+
+    if (rules.length === 0) {
+      console.log("📭 Nenhuma regra para este sensor.");
+      return;
+    }
+
+    console.log(`📋 ${rules.length} regras encontradas para ${tipoBruto}, pino ${pino}`);
+
+    // -------------------------------------------------
+    // EXECUTAR REGRAS
+    // -------------------------------------------------
 
     for (const rule of rules) {
-      console.log("➡️ Avaliando regra:", rule.name);
-      const valor = extractValue(tipo, data, rule.sensor.field || 'valor');
-      console.log("📐 Valor extraído:", valor);
+      console.log(`➡ Avaliando regra: ${rule.name}`);
 
-      if (Number.isNaN(valor)) {
-        console.log("⚠️ Valor inválido (NaN), regra ignorada");
-        continue;
-      }
+      const valor = extractValue(data, rule.sensor.field);
 
-      const met = checkCondition(rule.condition.operator, valor, rule.condition.value, rule.condition.value2);
-      console.log(`📏 Condição ${rule.condition.operator} ${rule.condition.value} →`, met);
+      console.log("🔎 Valor extraído:", valor);
 
-      if (met) {
-        console.log("✅ Condição satisfeita, publicando ação:", rule.action);
+      const ok = checkCondition(
+        rule.condition.operator,
+        valor,
+        rule.condition.value,
+        rule.condition.value2
+      );
+
+      if (ok) {
+        console.log("✅ Condição satisfeita → executando ação");
         publishAction(rule.action);
       } else {
         console.log("❌ Condição não satisfeita");
       }
     }
+
   } catch (err) {
-    console.error("❌ Erro ao avaliar regras:", err);
+    console.error("❌ Erro no processamento MQTT:", err);
   }
 });
 
-client.on('error', (err) => {
-  console.error('❌ Erro MQTT:', err);
-});
+client.on('error', (e) => console.error("Erro MQTT:", e));
 
 module.exports = client;
