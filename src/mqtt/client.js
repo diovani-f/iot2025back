@@ -1,5 +1,4 @@
 // src/mqtt/client.js
-
 const mqtt = require('mqtt');
 const Device = require('../models/Device');
 const Reading = require('../models/Reading');
@@ -21,6 +20,7 @@ client.on('connect', () => {
   client.subscribe('grupoX/config/response');
 });
 
+// map from topic tipo -> model stored in DB (best-effort)
 const mapTipoToModel = (tipo) => {
   const map = {
     joystick: "KY-023",
@@ -36,39 +36,93 @@ const mapTipoToModel = (tipo) => {
     hcsr04: "HCSR04",
     mpu6050: "MPU6050",
     apds9960: "APDS9960",
-    keypad4x4: "KEYPAD4X4"
+    keypad4x4: "KEYPAD4X4",
+    ir_receiver: "IR_RECEIVER"
   };
-  return map[tipo.toLowerCase()] || tipo.toUpperCase();
+  if (!tipo) return null;
+  const key = tipo.toLowerCase();
+  return map[key] || tipo.toUpperCase();
 };
 
+// extractValue: tolerant to different field names and nested fields
 const extractValue = (data, field) => {
   if (!data || !field) return null;
 
-  const aliases = {
-    temperature: ["temperature", "temperatura_c", "tempC", "temp", "valor"]
-  };
-
-  if (aliases[field]) {
-    for (const key of aliases[field]) {
-      if (data[key] !== undefined) return data[key];
+  // Support dotted field notation: "acelerometro.x"
+  if (field.includes('.')) {
+    const parts = field.split('.');
+    let cur = data;
+    for (const p of parts) {
+      if (cur === undefined || cur === null) return null;
+      cur = cur[p];
     }
-    return null;
+    return cur !== undefined ? cur : null;
   }
 
-  return data[field] !== undefined ? data[field] : null;
+  // Global alias map: maps canonical field -> possible names sent by firmwares
+  const aliases = {
+    // temperature
+    temperature: ["temperature", "temperatura_c", "tempC", "temp_c", "temp", "temperatura", "valor"],
+    // humidity
+    humidity: ["humidity", "umidade_pct", "umidade", "humidity_pct"],
+    // distance (ultrasonic)
+    distance: ["distancia_cm", "distance_cm", "dist_cm", "distance"],
+    // infrared
+    code: ["codigo_hex", "code", "codigo"],
+    // encoder
+    pps: ["pps", "pps_value"],
+    // joystick
+    x: ["x", "pos_x", "posx"],
+    y: ["y", "pos_y", "posy"],
+    click: ["click", "evento", "pressed", "pressionado"],
+    // keypad
+    tecla: ["tecla", "key", "keyPressed"],
+    // accel/gyro
+    acelerometro: ["acelerometro", "accelerometer", "accel"],
+    giroscopio: ["giroscopio", "gyroscope", "gyro"],
+    // generic value
+    value: ["value", "valor"]
+  };
+
+  // If requested field has aliases defined, try all
+  const lowerField = field.toLowerCase();
+  if (aliases[lowerField]) {
+    for (const k of aliases[lowerField]) {
+      if (data[k] !== undefined) return data[k];
+      // try case variations
+      if (data[k.toLowerCase()] !== undefined) return data[k.toLowerCase()];
+      if (data[k.toUpperCase()] !== undefined) return data[k.toUpperCase()];
+    }
+  }
+
+  // try direct hit
+  if (data[field] !== undefined) return data[field];
+  if (data[lowerField] !== undefined) return data[lowerField];
+  if (data[field.toLowerCase()] !== undefined) return data[field.toLowerCase()];
+
+  // Try to find a numeric value if the payload is simple like { "value": 12 }
+  if (data.value !== undefined) return data.value;
+  if (data.valor !== undefined) return data.valor;
+
+  return null;
 };
 
 const checkCondition = (op, v, a, b) => {
   if (v === null || v === undefined) return false;
 
+  // ensure numeric comparisons coerce if possible
+  const numV = (typeof v === 'string' && !isNaN(Number(v))) ? Number(v) : v;
+  const numA = (typeof a === 'string' && !isNaN(Number(a))) ? Number(a) : a;
+  const numB = (typeof b === 'string' && !isNaN(Number(b))) ? Number(b) : b;
+
   switch (op) {
-    case '>=': return v >= a;
-    case '<=': return v <= a;
-    case '>': return v > a;
-    case '<': return v < a;
-    case '==': return v == a;
-    case '!=': return v != a;
-    case 'between': return v >= a && v <= b;
+    case '>=': return numV >= numA;
+    case '<=': return numV <= numA;
+    case '>': return numV > numA;
+    case '<': return numV < numA;
+    case '==': return numV == numA;
+    case '!=': return numV != numA;
+    case 'between': return numV >= numA && numV <= numB;
     case 'in': return Array.isArray(a) && a.includes(v);
     case 'notin': return Array.isArray(a) && !a.includes(v);
     case 'contains': return (typeof v === 'string' || Array.isArray(v)) && v.includes(a);
@@ -77,18 +131,28 @@ const checkCondition = (op, v, a, b) => {
 };
 
 const publishAction = (action) => {
+  if (!action) return;
   if (Array.isArray(action)) {
-    for (const act of action) {
-      publishAction(act);
-    }
+    for (const act of action) publishAction(act);
     return;
   }
 
-  const topic = `grupoX/atuador/${action.tipo}/${action.pino}`;
-  client.publish(topic, action.command);
-  console.log(`Atuador acionado → ${topic}: ${action.command}`);
+  // action.tipo must match the type expected by the ESP (led, rele, motor_vibracao, etc.)
+  const tipo = action.tipo;
+  const pino = action.pino;
+  const cmd = action.command;
+
+  if (tipo === undefined || pino === undefined || cmd === undefined) {
+    console.log("Ação inválida, faltando tipo/pino/command:", action);
+    return;
+  }
+
+  const topic = `grupoX/atuador/${tipo}/${pino}`;
+  client.publish(topic, String(cmd));
+  console.log(`Atuador acionado → ${topic}: ${cmd}`);
 };
 
+// small in-memory state for temporal rules
 const state = {};
 
 client.on('message', async (topic, msg) => {
@@ -104,15 +168,19 @@ client.on('message', async (topic, msg) => {
     const parts = topic.split('/');
     if (parts.length < 3) return;
 
-    const tipoBruto = parts[2];
+    // topic pattern: grupoX/sensor/<tipo>/<pino?> or grupoX/sensor/<tipo>/sw25/x etc.
+    const tipoBruto = parts[2].toLowerCase();
     const modelEsperado = mapTipoToModel(tipoBruto);
 
     let pino = null;
     if (parts.length === 4) {
       pino = Number(parts[3]);
     } else if (parts.length >= 5) {
+      // for topics like grupoX/sensor/joystick/sw25/x or grupoX/sensor/keypad/row32
       const identifier = parts[3];
-      pino = Number(identifier.replace(/\D/g, ''));
+      // try to extract digits; if none, fallback to 0
+      const found = identifier.match(/\d+/);
+      pino = found ? Number(found[0]) : NaN;
     }
     if (isNaN(pino)) {
       console.log("Não foi possível extrair pino do tópico:", topic);
@@ -122,25 +190,43 @@ client.on('message', async (topic, msg) => {
     let data;
     try {
       data = JSON.parse(payload);
-    } catch {
+    } catch (e) {
       data = { valor: payload };
     }
 
+    // find device: be tolerant with model naming by using case-insensitive regex
+    // components.model can be "DS18B20", "DS18B20Sensor", "ds18b20", etc.
     const device = await Device.findOne({
-      components: { $elemMatch: { model: modelEsperado, pin: pino } }
+      components: {
+        $elemMatch: {
+          model: { $regex: new RegExp('^' + modelEsperado, 'i') },
+          pin: pino
+        }
+      }
     });
 
     if (!device) {
-      console.log(`Nenhum device com model=${modelEsperado}, pin=${pino}`);
+      console.log(`Nenhum device com model~=${modelEsperado}, pin=${pino}`);
       return;
     }
 
     const espId = device.espId;
 
-    await new Reading({ espId, tipo: tipoBruto, pino, data }).save();
-    console.log(`Salvo para ESP ${espId} → ${tipoBruto} (${pino})`, data);
+    // save reading
+    try {
+      await new Reading({ espId, tipo: tipoBruto, pino, data }).save();
+      console.log(`Salvo para ESP ${espId} → ${tipoBruto} (${pino})`, data);
+    } catch (e) {
+      console.error("Erro ao salvar Reading:", e);
+    }
 
-    const rules = await Rule.find({ deviceId: espId, "sensor.tipo": tipoBruto, "sensor.pino": pino });
+    // find rules matching this device & sensor
+    const rules = await Rule.find({
+      deviceId: espId,
+      "sensor.tipo": tipoBruto,
+      "sensor.pino": pino
+    });
+
     if (!rules.length) {
       console.log("Nenhuma regra para este sensor.");
       return;
@@ -151,17 +237,19 @@ client.on('message', async (topic, msg) => {
     for (const rule of rules) {
       console.log(`Avaliando regra: ${rule.name}`);
 
-      // Suporte a múltiplos campos
+      // get value (supports field aliases & dotted)
       let valor = extractValue(data, rule.sensor.field);
-      if (!valor && rule.sensor.field2) {
+
+      // try secondary field if configured
+      if ((valor === null || valor === undefined) && rule.sensor.field2) {
         valor = extractValue(data, rule.sensor.field2);
       }
 
-      // Suporte a alertas por tempo
+      // temporal condition handling (optional)
       if (rule.condition.time) {
         const now = Date.now();
         if (!state[rule.name]) state[rule.name] = now;
-        const diff = (now - state[rule.name]) / 1000; // segundos
+        const diff = (now - state[rule.name]) / 1000; // seconds
         if (diff < rule.condition.time) {
           console.log(`Condição temporal ainda não satisfeita (${diff}s < ${rule.condition.time}s)`);
           continue;
