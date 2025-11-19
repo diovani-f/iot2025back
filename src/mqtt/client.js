@@ -17,7 +17,6 @@ const client = mqtt.connect(options);
 
 client.on('connect', () => {
   console.log("Conectado ao broker MQTT");
-
   client.subscribe('grupoX/sensor/#');
   client.subscribe('grupoX/config/response');
 });
@@ -39,16 +38,13 @@ const mapTipoToModel = (tipo) => {
     apds9960: "APDS9960",
     keypad4x4: "KEYPAD4X4"
   };
-
   return map[tipo.toLowerCase()] || tipo.toUpperCase();
 };
-
 
 const extractValue = (data, field) => {
   if (!data || !field) return null;
   return data[field] !== undefined ? data[field] : null;
 };
-
 
 const checkCondition = (op, v, a, b) => {
   if (v === null || v === undefined) return false;
@@ -61,58 +57,55 @@ const checkCondition = (op, v, a, b) => {
     case '==': return v == a;
     case '!=': return v != a;
     case 'between': return v >= a && v <= b;
+    case 'in': return Array.isArray(a) && a.includes(v);
+    case 'notin': return Array.isArray(a) && !a.includes(v);
+    case 'contains': return (typeof v === 'string' || Array.isArray(v)) && v.includes(a);
     default: return false;
   }
 };
 
-
 const publishAction = (action) => {
+  if (Array.isArray(action)) {
+    for (const act of action) {
+      publishAction(act);
+    }
+    return;
+  }
+
   const topic = `grupoX/atuador/${action.tipo}/${action.pino}`;
   client.publish(topic, action.command);
-
-  console.log(`⚡ Atuador acionado → ${topic}: ${action.command}`);
+  console.log(`Atuador acionado → ${topic}: ${action.command}`);
 };
 
+const state = {};
 
 client.on('message', async (topic, msg) => {
   try {
     const payload = msg.toString();
-    console.log("\n📩 Mensagem recebida:", topic, payload);
+    console.log("\nMensagem recebida:", topic, payload);
 
     if (topic === 'grupoX/config/response') {
-      console.log("🔧 Resposta de config:", payload);
+      console.log("Resposta de config:", payload);
       return;
     }
 
     const parts = topic.split('/');
-
     if (parts.length < 3) return;
 
-    // grupoX/sensor/<tipo>/xxxx
     const tipoBruto = parts[2];
     const modelEsperado = mapTipoToModel(tipoBruto);
 
-
     let pino = null;
-
-    // Caso normal:
-    // grupoX/sensor/dht11/12
     if (parts.length === 4) {
       pino = Number(parts[3]);
-    }
-
-    // Joystick:
-    // grupoX/sensor/joystick/sw25/position
-    else if (parts.length >= 5) {
+    } else if (parts.length >= 5) {
       const identifier = parts[3];
       pino = Number(identifier.replace(/\D/g, ''));
     }
-
     if (isNaN(pino)) {
-      console.log("❌ Não foi possível extrair pino do tópico:", topic);
+      console.log("Não foi possível extrair pino do tópico:", topic);
       return;
     }
-
 
     let data;
     try {
@@ -121,14 +114,8 @@ client.on('message', async (topic, msg) => {
       data = { valor: payload };
     }
 
-
     const device = await Device.findOne({
-      components: {
-        $elemMatch: {
-          model: modelEsperado,
-          pin: pino
-        }
-      }
+      components: { $elemMatch: { model: modelEsperado, pin: pino } }
     });
 
     if (!device) {
@@ -138,48 +125,43 @@ client.on('message', async (topic, msg) => {
 
     const espId = device.espId;
 
-    await new Reading({
-      espId,
-      tipo: tipoBruto,
-      pino,
-      data
-    }).save();
+    await new Reading({ espId, tipo: tipoBruto, pino, data }).save();
+    console.log(`Salvo para ESP ${espId} → ${tipoBruto} (${pino})`, data);
 
-    console.log(`💾 Salvo para ESP ${espId} → ${tipoBruto} (${pino})`, data);
-
-    const rules = await Rule.find({
-      deviceId: espId,
-      "sensor.tipo": tipoBruto,
-      "sensor.pino": pino
-    });
-
-    if (rules.length === 0) {
-      console.log("📭 Nenhuma regra para este sensor.");
+    const rules = await Rule.find({ deviceId: espId, "sensor.tipo": tipoBruto, "sensor.pino": pino });
+    if (!rules.length) {
+      console.log("Nenhuma regra para este sensor.");
       return;
     }
 
-    console.log(`📋 ${rules.length} regras encontradas para ${tipoBruto}, pino ${pino}`);
-
+    console.log(`${rules.length} regras encontradas para ${tipoBruto}, pino ${pino}`);
 
     for (const rule of rules) {
-      console.log(`➡ Avaliando regra: ${rule.name}`);
+      console.log(`Avaliando regra: ${rule.name}`);
 
-      const valor = extractValue(data, rule.sensor.field);
+      // Suporte a múltiplos campos
+      let valor = extractValue(data, rule.sensor.field);
+      if (!valor && rule.sensor.field2) {
+        valor = extractValue(data, rule.sensor.field2);
+      }
 
-      console.log("🔎 Valor extraído:", valor);
+      // Suporte a alertas por tempo
+      if (rule.condition.time) {
+        const now = Date.now();
+        if (!state[rule.name]) state[rule.name] = now;
+        const diff = (now - state[rule.name]) / 1000; // segundos
+        if (diff < rule.condition.time) {
+          console.log(`Condição temporal ainda não satisfeita (${diff}s < ${rule.condition.time}s)`);
+          continue;
+        }
+      }
 
-      const ok = checkCondition(
-        rule.condition.operator,
-        valor,
-        rule.condition.value,
-        rule.condition.value2
-      );
-
+      const ok = checkCondition(rule.condition.operator, valor, rule.condition.value, rule.condition.value2);
       if (ok) {
-        console.log("Condição satisfeita → executando ação");
+        console.log(`Regra '${rule.name}' acionada: valor=${valor}, operador=${rule.condition.operator}, limite=${rule.condition.value}`);
         publishAction(rule.action);
       } else {
-        console.log("Condição não satisfeita");
+        console.log(`Condição não satisfeita para regra '${rule.name}': valor=${valor}`);
       }
     }
 
