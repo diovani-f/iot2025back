@@ -26,23 +26,55 @@ router.post('/configure', async (req, res) => {
 
     // Mapeamento dos modelos
     const tipoMapeado = (model) => {
-      switch (model.toUpperCase()) {
-        case 'KY-023': return 'joystick_ky023';
-        case 'DHT11': return 'dht11';
-        case 'DHT22': return 'dht22';
-        case 'DS18B20': return 'ds18b20';
-        case 'HCSR04': return 'hcsr04';
-        case 'MPU6050': return 'mpu6050';
-        case 'APDS9960': return 'apds9960';
-        case 'KEYPAD4X4': return 'keypad4x4';
-        case 'BOTAO': return 'botao';
-        case 'ENCODER': return 'encoder';
-        case 'RELE': return 'rele';
-        case 'MOTOR_VIBRACAO': return 'motor_vibracao';
-        case 'LED': return 'led';
-        default: return model.toLowerCase();
+      const m = model.toUpperCase();
+      switch (m) {
+        case 'KY-023': 
+          return 'joystick_ky023';
+
+        case 'DHT11': 
+          return 'dht11';
+
+        case 'DHT22': 
+          return 'dht22';
+
+        case 'DS18B20':
+        case 'DS18B20SENSOR':
+        case 'DS18B20_SENSOR':
+        case 'DS18B20-SENSOR':
+          return 'ds18b20';
+
+        case 'HCSR04': 
+          return 'hcsr04';
+
+        case 'MPU6050': 
+          return 'mpu6050';
+
+        case 'APDS9960': 
+          return 'apds9960';
+
+        case 'KEYPAD4X4': 
+          return 'keypad4x4';
+
+        case 'BOTAO': 
+          return 'botao';
+
+        case 'ENCODER': 
+          return 'encoder';
+
+        case 'RELE': 
+          return 'rele';
+
+        case 'MOTOR_VIBRACAO': 
+          return 'motor_vibracao';
+
+        case 'LED': 
+          return 'led';
+
+        default: 
+          return model.toLowerCase();
       }
     };
+
 
     // Agrupar pinos por tipo
     const grouped = {};
