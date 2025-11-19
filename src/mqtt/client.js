@@ -43,6 +43,18 @@ const mapTipoToModel = (tipo) => {
 
 const extractValue = (data, field) => {
   if (!data || !field) return null;
+
+  const aliases = {
+    temperature: ["temperature", "temperatura_c", "tempC", "temp", "valor"]
+  };
+
+  if (aliases[field]) {
+    for (const key of aliases[field]) {
+      if (data[key] !== undefined) return data[key];
+    }
+    return null;
+  }
+
   return data[field] !== undefined ? data[field] : null;
 };
 
