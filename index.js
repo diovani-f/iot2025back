@@ -24,6 +24,7 @@ const resendRoutes = require('./src/routes/resend');
 const latestReadingRoutes = require('./src/routes/latestReading');
 const actuatorRoutes = require('./src/routes/actuator');
 const rulesRoutes = require('./src/routes/rules');
+const devicesRoutes = require('./src/routes/devices');
 
 app.use('/api', configRoutes);
 app.use('/api', readingsRoutes);
@@ -31,6 +32,7 @@ app.use('/api', resendRoutes);
 app.use('/api', latestReadingRoutes);
 app.use('/api/actuator', actuatorRoutes);
 app.use('/api/rules', rulesRoutes);
+app.use('/api', devicesRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
