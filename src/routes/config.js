@@ -17,10 +17,22 @@ router.post('/configure', async (req, res) => {
   }
 
   try {
-    // Salvar no banco
+    // normalizar componentes para garantir que todos os campos sejam salvos
+    const normalizedComponents = components.map(c => ({
+      name: c.name || '',
+      model: c.model || '',
+      type: c.type || 'sensor',
+      pin: typeof c.pin === 'number' ? c.pin : 0,
+      interval: typeof c.interval === 'number' ? c.interval : 1000,
+      unit: c.unit || undefined,
+      label: c.label || '',
+      config: c.config || undefined
+    }));
+
+    // salvar no banco com todos os campos
     const device = await Device.findOneAndUpdate(
       { espId },
-      { name, espId, components },
+      { name, espId, components: normalizedComponents },
       { upsert: true, new: true }
     );
 
@@ -79,7 +91,7 @@ router.post('/configure', async (req, res) => {
     // Agrupar pinos por tipo
     const grouped = {};
 
-    components.forEach(c => {
+    normalizedComponents.forEach(c => {
       const tipo = tipoMapeado(c.model);
       if (!tipo) return;
 
