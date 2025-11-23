@@ -28,13 +28,13 @@ router.post('/configure', async (req, res) => {
     const tipoMapeado = (model) => {
       const m = model.toUpperCase();
       switch (m) {
-        case 'KY-023': 
+        case 'KY-023':
           return 'joystick_ky023';
 
-        case 'DHT11': 
+        case 'DHT11':
           return 'dht11';
 
-        case 'DHT22': 
+        case 'DHT22':
           return 'dht22';
 
         case 'DS18B20':
@@ -43,34 +43,34 @@ router.post('/configure', async (req, res) => {
         case 'DS18B20-SENSOR':
           return 'ds18b20';
 
-        case 'HCSR04': 
+        case 'HCSR04':
           return 'hcsr04';
 
-        case 'MPU6050': 
+        case 'MPU6050':
           return 'mpu6050';
 
-        case 'APDS9960': 
+        case 'APDS9960':
           return 'apds9960';
 
-        case 'KEYPAD4X4': 
+        case 'KEYPAD4X4':
           return 'keypad4x4';
 
-        case 'BOTAO': 
+        case 'BOTAO':
           return 'botao';
 
-        case 'ENCODER': 
+        case 'ENCODER':
           return 'encoder';
 
-        case 'RELE': 
+        case 'RELE':
           return 'rele';
 
-        case 'MOTOR_VIBRACAO': 
+        case 'MOTOR_VIBRACAO':
           return 'motor_vibracao';
 
-        case 'LED': 
+        case 'LED':
           return 'led';
 
-        default: 
+        default:
           return model.toLowerCase();
       }
     };
@@ -115,7 +115,8 @@ router.post('/configure', async (req, res) => {
     });
 
     // Enviar via MQTT
-    const topic = "grupoX/config";
+    const group = process.env.GROUP || "grupoX";
+    const topic = `${group}/config`;
 
     Object.entries(grouped).forEach(([tipo, pinos]) => {
       const payload = {
