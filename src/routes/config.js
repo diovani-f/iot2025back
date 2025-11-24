@@ -116,7 +116,7 @@ router.post('/configure', async (req, res) => {
 
     // Enviar via MQTT
     const group = process.env.GROUP || "grupoX";
-    const topic = `${group}/config`;
+    const topic = `${group}/${espId}/config`;
 
     Object.entries(grouped).forEach(([tipo, pinos]) => {
       const payload = {
