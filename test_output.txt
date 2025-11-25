@@ -1,0 +1,1 @@
+[MOCK MQTT] Publish to grupoX/esp32-TARGET/atuador/led/2: ON

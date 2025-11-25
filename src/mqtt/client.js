@@ -17,7 +17,9 @@ const client = mqtt.connect(options);
 client.on('connect', () => {
   console.log("Conectado ao broker MQTT");
   client.subscribe('grupoX/sensor/#');
+  client.subscribe('grupoX/sensor/#');
   client.subscribe('grupoX/config/response');
+  client.subscribe('grupoX/+/status'); // Auto-discovery
 });
 
 // map from topic tipo -> model stored in DB (best-effort)
@@ -104,6 +106,7 @@ const extractValue = (data, field) => {
   if (data.value !== undefined) return data.value;
   if (data.valor !== undefined) return data.valor;
 
+  console.log(`[EXTRACT] Failed to extract '${field}' from:`, JSON.stringify(data));
   return null;
 };
 
@@ -130,10 +133,10 @@ const checkCondition = (op, v, a, b) => {
   }
 };
 
-const publishAction = (action) => {
+const publishAction = (action, targetDeviceId) => {
   if (!action) return;
   if (Array.isArray(action)) {
-    for (const act of action) publishAction(act);
+    for (const act of action) publishAction(act, targetDeviceId);
     return;
   }
 
@@ -142,14 +145,33 @@ const publishAction = (action) => {
   const pino = action.pino;
   const cmd = action.command;
 
-  if (tipo === undefined || pino === undefined || cmd === undefined) {
-    console.log("Ação inválida, faltando tipo/pino/command:", action);
+  if (tipo === undefined || pino === undefined || cmd === undefined || !targetDeviceId) {
+    console.log("Ação inválida, faltando tipo/pino/command ou targetDeviceId:", action, targetDeviceId);
     return;
   }
 
-  const topic = `grupoX/atuador/${tipo}/${pino}`;
-  client.publish(topic, String(cmd));
-  console.log(`Atuador acionado → ${topic}: ${cmd}`);
+  // Topic format: grupoX/{targetDeviceId}/atuador/{tipo}/{pino}
+  // Ensure tipo is lowercase (e.g., 'led' instead of 'LED') to match firmware expectation
+  const tipoLower = tipo.toLowerCase();
+  const topic = `grupoX/${targetDeviceId}/atuador/${tipoLower}/${pino}`;
+
+  // [ROBUSTNESS] Send configuration (ADD) before action to ensure device knows about the pin
+  const configTopic = `grupoX/${targetDeviceId}/config`;
+  const configPayload = JSON.stringify({
+    comando: "ADD",
+    tipo: tipoLower,
+    pinos: [pino]
+  });
+
+  console.log(`[ACTION] Auto-configuring ${tipoLower} on ${targetDeviceId} before action...`);
+  client.publish(configTopic, configPayload);
+
+  // Revert to sending raw command (ON/OFF) as per user's working test script
+  const payload = cmd;
+
+  console.log(`[ACTION] Publishing to ${topic}: ${payload}`);
+  client.publish(topic, String(payload));
+  console.log(`Atuador acionado → ${topic}: ${payload}`);
 };
 
 // small in-memory state for temporal rules
@@ -163,6 +185,47 @@ client.on('message', async (topic, msg) => {
     if (topic === 'grupoX/config/response') {
       console.log("Resposta de config:", payload);
       return;
+    }
+
+    // Auto-Discovery & Status Update
+    // Topic: grupoX/{espId}/status
+    if (topic.endsWith('/status')) {
+      const parts = topic.split('/');
+      if (parts.length === 3 && parts[0] === 'grupoX') {
+        const espId = parts[1];
+        const status = payload === 'online' ? 'online' : 'offline';
+
+        console.log(`[STATUS] ${espId} is ${status}`);
+
+        // Update or Create Device
+        const device = await Device.findOneAndUpdate(
+          { espId },
+          {
+            $set: {
+              status,
+              lastSeen: new Date(),
+              // If creating new, set default name
+              ...(payload === 'online' ? { name: `Novo ${espId}` } : {})
+            },
+            $setOnInsert: { components: [] } // Initialize components if new
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+
+        // [NEW] Send config if device just came online
+        if (status === 'online') {
+          console.log(`[CONFIG] Device ${espId} is online. Sending configuration...`);
+          const configService = require('../services/configService');
+          const payloads = configService.generateConfigPayloads(device);
+
+          payloads.forEach(({ topic, payload }) => {
+            client.publish(topic, payload);
+            console.log(`[CONFIG] Sent to ${topic}: ${payload}`);
+          });
+        }
+
+        return;
+      }
     }
 
     const parts = topic.split('/');
@@ -216,6 +279,12 @@ client.on('message', async (topic, msg) => {
     try {
       await new Reading({ espId, tipo: tipoBruto, pino, data }).save();
       console.log(`Salvo para ESP ${espId} → ${tipoBruto} (${pino})`, data);
+
+      // FIX: Update device status to online when receiving data
+      await Device.findOneAndUpdate(
+        { espId },
+        { $set: { status: 'online', lastSeen: new Date() } }
+      );
     } catch (e) {
       console.error("Erro ao salvar Reading:", e);
     }
@@ -223,7 +292,7 @@ client.on('message', async (topic, msg) => {
     // find rules matching this device & sensor
     const rules = await Rule.find({
       deviceId: espId,
-      "sensor.tipo": tipoBruto,
+      "sensor.tipo": { $regex: new RegExp('^' + tipoBruto + '$', 'i') },
       "sensor.pino": pino
     });
 
@@ -259,7 +328,7 @@ client.on('message', async (topic, msg) => {
       const ok = checkCondition(rule.condition.operator, valor, rule.condition.value, rule.condition.value2);
       if (ok) {
         console.log(`Regra '${rule.name}' acionada: valor=${valor}, operador=${rule.condition.operator}, limite=${rule.condition.value}`);
-        publishAction(rule.action);
+        publishAction(rule.action, rule.targetDeviceId || rule.deviceId);
       } else {
         console.log(`Condição não satisfeita para regra '${rule.name}': valor=${valor}`);
       }

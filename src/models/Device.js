@@ -14,6 +14,8 @@ const componentSchema = new mongoose.Schema({
 const deviceSchema = new mongoose.Schema({
   name: String,
   espId: String,
+  status: { type: String, default: 'offline' }, // 'online' | 'offline'
+  lastSeen: { type: Date, default: Date.now },
   components: [componentSchema]
 });
 

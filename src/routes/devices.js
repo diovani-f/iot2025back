@@ -37,4 +37,36 @@ router.get('/devices', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /api/devices/{espId}:
+ *   delete:
+ *     tags: [Dispositivos]
+ *     summary: Remove um dispositivo
+ *     parameters:
+ *       - in: path
+ *         name: espId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Dispositivo removido
+ */
+router.delete('/devices/:espId', async (req, res) => {
+    try {
+        const { espId } = req.params;
+        const result = await Device.findOneAndDelete({ espId });
+
+        if (!result) {
+            return res.status(404).json({ error: 'Dispositivo não encontrado' });
+        }
+
+        res.json({ message: 'Dispositivo removido com sucesso' });
+    } catch (error) {
+        console.error('Erro ao remover dispositivo:', error);
+        res.status(500).json({ error: 'Erro ao remover dispositivo' });
+    }
+});
+
 module.exports = router;
