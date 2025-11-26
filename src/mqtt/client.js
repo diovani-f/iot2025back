@@ -331,6 +331,10 @@ client.on('message', async (topic, msg) => {
         publishAction(rule.action, rule.targetDeviceId || rule.deviceId);
       } else {
         console.log(`Condição não satisfeita para regra '${rule.name}': valor=${valor}`);
+        if(rule.condition.time && state[rule.name]) {
+          delete state[rule.name];
+          console.log(`Contagem temporal para '${rule.name}' resetada.`);
+        }
       }
     }
 
