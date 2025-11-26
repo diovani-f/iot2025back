@@ -220,15 +220,24 @@ client.on('message', async (topic, msg) => {
     const modelEsperado = mapTipoToModel(tipoBruto);
 
     let pino = null;
+    let identifier = null;
+
     if (parts.length === 4) {
-      pino = Number(parts[3]);
-    } else if (parts.length >= 5) {
-      // for topics like grupoX/sensor/joystick/sw25/x or grupoX/sensor/keypad/row32
-      const identifier = parts[3];
-      // try to extract digits; if none, fallback to NaN
-      const found = identifier.match(/\d+/);
-      pino = found ? Number(found[0]) : NaN;
+      identifier = parts[3];
+    } 
+    else if (parts.length >= 5) {
+      identifier = parts[3];
     }
+
+    if (identifier) {
+      pino = Number(identifier);
+
+      if (isNaN(pino)) {
+        const found = identifier.match(/\d+/);
+        pino = found ? Number(found[0]) : NaN;
+      }
+    }
+
     if (isNaN(pino)) {
       console.log("Não foi possível extrair pino do tópico:", topic);
       return;
