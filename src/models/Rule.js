@@ -3,9 +3,7 @@ const mongoose = require('mongoose');
 // Define um sub-schema para uma única Ação de Atuador
 const ActionSchema = new mongoose.Schema({
   tipo: { type: String, required: true }, // ex: 'led', 'rele', 'motor_vibracao'
-  pino: { type: Number, required: true },
-  // Removida a restrição 'enum'. Permite comandos customizados como:
-  // 'ON_3S', 'OFF', 'VIB_CURTA', etc.
+  pino: { type: mongoose.Schema.Types.Mixed, required: true },
   command: { type: String, required: true } 
 });
 
@@ -16,7 +14,7 @@ const RuleSchema = new mongoose.Schema({
 
   sensor: {
     tipo: { type: String, required: true },
-    pino: { type: Number, required: true },
+    pino: { type: mongoose.Schema.Types.Mixed, required: true },
     field: { type: String, required: true },
     field2: { type: String } // Adicionado para suportar a lógica field2 do client.js
   },

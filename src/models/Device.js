@@ -4,7 +4,7 @@ const componentSchema = new mongoose.Schema({
   name: String,
   model: String,
   type: String,
-  pin: Number,
+  pin: mongoose.Schema.Types.Mixed,
   interval: Number,
   unit: String,
   label: String,
