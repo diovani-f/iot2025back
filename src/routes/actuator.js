@@ -14,7 +14,7 @@ router.post('/', (req, res) => {
 
   // Tópico CORRIGIDO: Inclui o ID do dispositivo (ESP ID)
   // Exemplo: grupoX/ESP4_LEDS/atuador/led/15
-  const topic = `grupoX/atuador/${tipo}/${pin}`;
+  const topic = `grupoX/${deviceId}/atuador/${tipo}/${pin}`; 
 
   // O comando agora pode ser "ON", "OFF", ou "ON_3S", etc.
   mqttClient.publish(topic, command); 
