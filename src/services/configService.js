@@ -43,32 +43,49 @@ const generateConfigPayloads = (device) => {
         const tipo = mapModelToType(c.model);
         if (!tipo) return;
 
+        // Ensure we have an array of pins
+        let pins = [];
+        if (Array.isArray(c.pin)) {
+            pins = c.pin;
+        } else if (Array.isArray(c.pinos)) {
+            pins = c.pinos;
+        } else if (c.pin !== undefined && c.pin !== null) {
+            pins.push(c.pin);
+            if (c.pin_extra !== undefined) pins.push(c.pin_extra);
+        }
+
         // JOYSTICK (3 pinos)
         if (tipo === "joystick_ky023") {
-            if (!grouped[tipo]) grouped[tipo] = [];
-            grouped[tipo].push(c.pin);
+            if (pins.length > 0) {
+                grouped[tipo] = pins;
+            }
+            return;
+        }
+
+        // Keypad 4x4 (8 pinos)
+        if (tipo === "keypad4x4") {
+            if (pins.length === 8) {
+                grouped[tipo] = pins;
+            }
+            return;
+        }
+
+        // SENSORES DE DOIS PINOS (HCSR04, MPU6050, APDS9960)
+        if (["mpu6050", "apds9960", "hcsr04"].includes(tipo)) {
+            if (pins.length > 0) {
+                grouped[tipo] = pins;
+            }
             return;
         }
 
         // LED/botão/atuadores simples e sensores de 1 pino
-        if (["led", "botao", "encoder", "motor_vibracao", "rele", "dht11", "dht22", "ds18b20"].includes(tipo)) {
+        if (["led", "botao", "encoder", "motor_vibracao", "rele", "dht11", "dht22", "ds18b20", "ir_receiver"].includes(tipo)) {
             if (!grouped[tipo]) grouped[tipo] = [];
-            grouped[tipo].push(c.pin);
-            return;
-        }
-
-        // SENSORES DE DOIS PINOS
-        if (["mpu6050", "apds9960", "hcsr04"].includes(tipo)) {
-            if (!grouped[tipo]) grouped[tipo] = [];
-            grouped[tipo].push(c.pin);
-            if (c.pin_extra !== undefined) grouped[tipo].push(c.pin_extra);
-            return;
-        }
-
-        // Keypad 4x4
-        if (tipo === "keypad4x4") {
-            if (Array.isArray(c.pinos) && c.pinos.length === 8) {
-                grouped[tipo] = c.pinos;
+            // For single pin devices, we might have multiple instances (e.g. multiple buttons)
+            // The original logic pushed individual pins to an array for the type
+            // But if 'pins' is an array (e.g. [2]), we should push the first element
+            if (pins.length > 0) {
+                grouped[tipo].push(pins[0]);
             }
             return;
         }
