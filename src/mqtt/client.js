@@ -75,12 +75,18 @@ const extractValue = (data, field) => {
         click: ["click", "evento", "pressed", "pressionado"],
         // keypad
         tecla: ["tecla", "key", "keyPressed"],
-        password: ["senha_completa", "complete_password", "password", "senha"], // Added aliases
+        password: ["senha_completa", "complete_password", "password", "senha"],
         // accel/gyro
         acelerometro: ["acelerometro", "accelerometer", "accel"],
         giroscopio: ["giroscopio", "gyroscope", "gyro"],
         // generic value
-        value: ["value", "valor"]
+        value: ["value", "valor"],
+        // apds9960
+        gesto: ["gesto", "gesture"],
+        proximidade: ["proximidade", "proximity"],
+        luz_ambiente: ["luz_ambiente", "ambient_light", "light"],
+        // door/window
+        aberto: ["aberto", "open", "is_open"]
     };
 
     const lowerField = field.toLowerCase();
@@ -290,7 +296,7 @@ client.on('message', async (topic, msg) => {
 
         const rules = await Rule.find({
             deviceId: espId,
-            "sensor.tipo": { $in: [new RegExp('^' + tipoBruto + '$', 'i'), new RegExp('^' + modelEsperado + '$', 'i')] }, // Search for both
+            "sensor.tipo": { $in: [new RegExp('^' + tipoBruto, 'i'), new RegExp('^' + modelEsperado, 'i')] }, // Search for both
             "sensor.pino": { $in: [pino] } // Garante que o pino lido do tópico corresponda à regra
         });
 
