@@ -90,7 +90,7 @@ const options = {
       }
     }
   },
-  apis: ['./src/routes/*.js'] // Caminho para os arquivos com anotações Swagger
+  apis: ['./src/routes/*.js']
 };
 
 module.exports = swaggerJSDoc(options);

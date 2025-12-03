@@ -3,7 +3,6 @@
 #include "Sensor.h"
 #include <ArduinoJson.h>
 
-// --- Lista de todos os tipos de sensores ---
 #include "Botao.h"
 #include "EncoderSensor.h"
 #include "Hcsr04Sensor.h"
@@ -21,13 +20,11 @@
 #include <Adafruit_APDS9960.h>
 #include <DHT.h> 
 
-// --- Variáveis Internas ---
 static Sensor* sensores[MAX_SENSORES];
 static int numSensores = 0;
 static PubSubClient* _mqttClient;
 static bool irReceiverActive = false;
 
-// --- Setup do Manager ---
 void sensorManagerSetup(PubSubClient* client) {
     _mqttClient = client;
     numSensores = 0;
@@ -37,7 +34,6 @@ void sensorManagerSetup(PubSubClient* client) {
     }
 }
 
-// --- Função Factory (Padronizada com 'pinos') ---
 void addSensor(JsonObject config) {
     if (numSensores >= MAX_SENSORES) {
         _mqttClient->publish(topic_config_response, "Erro: Maximo de sensores atingido");
@@ -50,27 +46,21 @@ void addSensor(JsonObject config) {
         return;
     }
     
-    // Pega o array de pinos (Padrão Único)
     JsonArray pinArray = config["pinos"];
     
     Serial.printf("[Manager] Tentando adicionar sensor '%s'\n", tipo.c_str());
     
-    // =================================================================================
-    // CATEGORIA 1: Sensores de 1 Pino
-    // (Botão, Encoder, IR, DHT, DS18B20, Motor, Relé, LED)
-    // =================================================================================
     if (tipo == "botao" || tipo == "encoder" || tipo == "ir_receiver" || 
         tipo == "dht11" || tipo == "dht22" || tipo == "ds18b20" || 
         tipo == "motor_vibracao" || tipo == "rele" || tipo == "led") {
         
-        // Validação: Precisa ter exatamente 1 pino no array
         if (pinArray.isNull() || pinArray.size() != 1) {
             String msg = "Erro: " + tipo + " requer array 'pinos' com 1 pino. Ex: [15]";
             _mqttClient->publish(topic_config_response, msg.c_str());
             return;
         }
         
-        int pino = pinArray[0]; // Pega o primeiro (e único) pino
+        int pino = pinArray[0];
 
         // Criação do Objeto
         if (tipo == "botao") {
@@ -105,26 +95,20 @@ void addSensor(JsonObject config) {
             sensores[numSensores] = new LedAtuador(pino, "grupoX/atuador/led", _mqttClient);
         }
 
-        // Inicialização Comum
         sensores[numSensores]->setup();
         numSensores++;
         String msg = "OK: " + tipo + " adicionado no pino " + String(pino);
         _mqttClient->publish(topic_config_response, msg.c_str());
 
-    // =================================================================================
-    // CATEGORIA 2: Sensores de 2 Pinos
-    // (Ultrassônico, I2C: MPU6050, APDS9960)
-    // =================================================================================
     } else if (tipo == "hcsr04" || tipo == "mpu6050" || tipo == "apds9960") {
         
-        // Validação: Precisa ter exatamente 2 pinos
         if (pinArray.isNull() || pinArray.size() != 2) {
             String msg = "Erro: " + tipo + " requer array 'pinos' com 2 pinos. Ex: [21, 22]";
             _mqttClient->publish(topic_config_response, msg.c_str());
             return;
         }
         
-        int pino1 = pinArray[0]; // Trig ou SDA
+        int pino1 = pinArray[0];
         int pino2 = pinArray[1]; // Echo ou SCL
         String msg = "";
 
@@ -145,9 +129,6 @@ void addSensor(JsonObject config) {
         numSensores++;
         _mqttClient->publish(topic_config_response, msg.c_str());
 
-    // =================================================================================
-    // CATEGORIA 3: Joystick (3 Pinos)
-    // =================================================================================
     } else if (tipo == "joystick_ky023") {
         
         if (pinArray.isNull() || pinArray.size() != 3) {
@@ -166,9 +147,6 @@ void addSensor(JsonObject config) {
         String msg = "OK: Joystick adicionado";
         _mqttClient->publish(topic_config_response, msg.c_str());
 
-    // =================================================================================
-    // CATEGORIA 4: Teclado (8 Pinos)
-    // =================================================================================
     } else if (tipo == "keypad4x4") {
         
         if (pinArray.isNull() || pinArray.size() != 8) {
@@ -191,8 +169,6 @@ void addSensor(JsonObject config) {
         _mqttClient->publish(topic_config_response, msg.c_str());
     }
 }
-
-// --- Loops ---
 
 void sensorManagerLoop() {
     for (int i = 0; i < numSensores; i++) {

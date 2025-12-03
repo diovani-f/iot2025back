@@ -32,7 +32,6 @@ void loop() {
   }
   client.loop();
 
-  // Detectar gestos
   if (APDS.gestureAvailable()) {
     int gesture = APDS.readGesture();
     String gestureStr;
@@ -48,7 +47,6 @@ void loop() {
     client.publish("sensor/apds9960/gesto", gestureStr.c_str());
   }
 
-  // Ler cores
   if (APDS.colorAvailable()) {
     int r, g, b, a;
     APDS.readColor(r, g, b, a);

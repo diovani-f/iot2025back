@@ -30,7 +30,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 void setup() {
   meuServo.attach(SERVO_PIN);
-  meuServo.write(90); // Posição inicial
+  meuServo.write(90);
 
   Serial.begin(115200);
   WiFi.begin(ssid, password);

@@ -1,4 +1,3 @@
-// src/mqtt/client.js
 const mqtt = require('mqtt');
 const Device = require('../models/Device');
 const Reading = require('../models/Reading');
@@ -36,7 +35,7 @@ const mapTipoToModel = (tipo) => {
         hcsr04: "HCSR04",
         mpu6050: "MPU6050",
         apds9960: "APDS9960",
-        keypad: "KEYPAD4X4", // Added mapping
+        keypad: "KEYPAD4X4",
         keypad4x4: "KEYPAD4X4",
         ir_receiver: "IR_RECEIVER"
     };
@@ -59,33 +58,22 @@ const extractValue = (data, field) => {
     }
 
     const aliases = {
-        // temperature
         temperature: ["temperature", "temperatura_c", "tempC", "temp_c", "temp", "temperatura", "valor"],
-        // humidity
         humidity: ["humidity", "umidade_pct", "umidade", "humidity_pct"],
-        // distance (ultrasonic)
         distance: ["distancia_cm", "distance_cm", "dist_cm", "distance"],
-        // infrared
         code: ["codigo_hex", "code", "codigo"],
-        // encoder
         pps: ["pps", "pps_value"],
-        // joystick
         x: ["x", "pos_x", "posy"],
         y: ["y", "pos_y", "posy"],
         click: ["click", "evento", "pressed", "pressionado"],
-        // keypad
         tecla: ["tecla", "key", "keyPressed"],
         password: ["senha_completa", "complete_password", "password", "senha"],
-        // accel/gyro
         acelerometro: ["acelerometro", "accelerometer", "accel"],
         giroscopio: ["giroscopio", "gyroscope", "gyro"],
-        // generic value
         value: ["value", "valor"],
-        // apds9960
         gesto: ["gesto", "gesture"],
         proximidade: ["proximidade", "proximity"],
         luz_ambiente: ["luz_ambiente", "ambient_light", "light"],
-        // door/window
         aberto: ["aberto", "open", "is_open"]
     };
 
@@ -93,18 +81,15 @@ const extractValue = (data, field) => {
     if (aliases[lowerField]) {
         for (const k of aliases[lowerField]) {
             if (data[k] !== undefined) return data[k];
-            // try case variations
             if (data[k.toLowerCase()] !== undefined) return data[k.toLowerCase()];
             if (data[k.toUpperCase()] !== undefined) return data[k.toUpperCase()];
         }
     }
 
-    // try direct hit
     if (data[field] !== undefined) return data[field];
     if (data[lowerField] !== undefined) return data[lowerField];
     if (data[field.toLowerCase()] !== undefined) return data[field.toLowerCase()];
 
-    // Try to find a numeric value if the payload is simple like { "value": 12 }
     if (data.value !== undefined) return data.value;
     if (data.valor !== undefined) return data.valor;
 
@@ -115,7 +100,6 @@ const extractValue = (data, field) => {
 const checkCondition = (op, v, a, b) => {
     if (v === null || v === undefined) return false;
 
-    // ensure numeric comparisons coerce if possible
     const numV = (typeof v === 'string' && !isNaN(Number(v))) ? Number(v) : v;
     const numA = (typeof a === 'string' && !isNaN(Number(a))) ? Number(a) : a;
     const numB = (typeof b === 'string' && !isNaN(Number(b))) ? Number(b) : b;
@@ -153,7 +137,6 @@ const publishAction = (action, targetDeviceId) => {
 
     let tipoLower = tipo.toLowerCase();
 
-    // FIX: Map motor_vibracao to vibracao to match firmware topic
     if (tipoLower === 'motor_vibracao') {
         tipoLower = 'vibracao';
     }
@@ -296,8 +279,8 @@ client.on('message', async (topic, msg) => {
 
         const rules = await Rule.find({
             deviceId: espId,
-            "sensor.tipo": { $in: [new RegExp('^' + tipoBruto, 'i'), new RegExp('^' + modelEsperado, 'i')] }, // Search for both
-            "sensor.pino": { $in: [pino] } // Garante que o pino lido do tópico corresponda à regra
+            "sensor.tipo": { $in: [new RegExp('^' + tipoBruto, 'i'), new RegExp('^' + modelEsperado, 'i')] },
+            "sensor.pino": { $in: [pino] }
         });
 
         if (!rules.length) {
@@ -310,19 +293,16 @@ client.on('message', async (topic, msg) => {
         for (const rule of rules) {
             console.log(`Avaliando regra: ${rule.name}`);
 
-            // get value (supports field aliases & dotted)
             let valor = extractValue(data, rule.sensor.field);
 
-            // try secondary field if configured
             if ((valor === null || valor === undefined) && rule.sensor.field2) {
                 valor = extractValue(data, rule.sensor.field2);
             }
 
-            // temporal condition handling (optional)
             if (rule.condition.time) {
                 const now = Date.now();
                 if (!state[rule.name]) state[rule.name] = now;
-                const diff = (now - state[rule.name]) / 1000; // seconds
+                const diff = (now - state[rule.name]) / 1000;
                 if (diff < rule.condition.time) {
                     console.log(`Condição temporal ainda não satisfeita (${diff}s < ${rule.condition.time}s)`);
                     continue;

@@ -1,15 +1,9 @@
-// src/routes/configure.js
-
 const express = require('express');
 const router = express.Router();
 const Device = require('../models/Device');
 const mqttClient = require('../mqtt/client');
 const configService = require('../services/configService');
 
-/**
- * POST /api/configure
- * Salva a configuração e envia para o ESP no formato correto
- */
 router.post('/configure', async (req, res) => {
   const { name, espId, components } = req.body;
 
@@ -18,14 +12,12 @@ router.post('/configure', async (req, res) => {
   }
 
   try {
-    // Salvar no banco
     const device = await Device.findOneAndUpdate(
       { espId },
       { name, espId, components },
       { upsert: true, new: true }
     );
 
-    // Gerar e enviar configurações via MQTT
     const payloads = configService.generateConfigPayloads(device);
 
     payloads.forEach(({ topic, payload }) => {
