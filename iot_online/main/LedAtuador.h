@@ -8,14 +8,14 @@ private:
     String _controlTopic;
     PubSubClient* _client;
     
-    // --- NOVO: Variável para controlar o tempo de desligamento ---
+    
     unsigned long _autoOffTime; 
 
 public:
     LedAtuador(int pin, String topic_base, PubSubClient* mqttClient);
     
     void setup() override;
-    void loop() override; // Agora o loop será usado!
+    void loop() override; 
     String getType() override;
     
     void handleMqttMessage(String topic, String payload) override;

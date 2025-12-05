@@ -11,9 +11,9 @@ WiFiClientSecure espClient;
 PubSubClient client(espClient);
 
 // --- Variáveis Dinâmicas de Identidade ---
-String myDeviceId;       // Ex: "esp32-A1B2C3"
-String myConfigTopic;    // Ex: "grupoX/esp32-A1B2C3/config"
-String myStatusTopic;    // Ex: "grupoX/esp32-A1B2C3/status"
+String myDeviceId;
+String myConfigTopic;
+String myStatusTopic;
 
 // Função de Callback (Recebe mensagens)
 void callback(char* topic, byte* payload, unsigned int length) {
@@ -23,10 +23,9 @@ void callback(char* topic, byte* payload, unsigned int length) {
     payload[length] = '\0';
     String msg = (char*)payload;
 
-    // Verifica se é tópico de config (Global OU Específico deste ESP)
     if (String(topic) == topic_config || String(topic) == myConfigTopic) {
         
-        DynamicJsonDocument doc(1024); // Aumentei o buffer para garantir
+        DynamicJsonDocument doc(1024);
         DeserializationError error = deserializeJson(doc, payload, length);
 
         if (error) {
@@ -50,8 +49,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
         }
         
     } else {
-        // Se não é config, é mensagem para Atuador (ex: Ligar LED)
-        // Repassa para o gerenciador, que sabe qual sensor deve receber
         sensorManagerHandleMessage(String(topic), msg);
     }
 }
@@ -98,10 +95,7 @@ void setup() {
     Serial.begin(115200);
     Serial.println("\n\n--- INICIANDO SISTEMA ---");
 
-    // 1. CONEXÃO WI-FI (IMPORTANTE: Deve vir antes de gerar o ID)
-    // Precisamos ligar o rádio Wi-Fi para que o MAC Address seja lido corretamente
     WiFiManager wm;
-    // wm.resetSettings(); // Descomente se precisar limpar o Wi-Fi salvo
     
     if (!wm.autoConnect("Plataforma-IoT-Config", "senha1234")) {
         Serial.println("Falha ao conectar ao Wi-Fi. Reiniciando...");
@@ -111,14 +105,12 @@ void setup() {
     Serial.println("\n--- WI-FI CONECTADO! ---");
 
     // 2. GERAÇÃO DE ID ÚNICO
-    // Agora que o Wi-Fi está ligado, o MAC é válido e único.
     String mac = WiFi.macAddress();
     mac.replace(":", ""); 
-    String shortMac = mac.substring(6); // Pega os últimos 6 caracteres (ex: A1B2C3)
+    String shortMac = mac.substring(6);
     
     myDeviceId = "esp32-" + shortMac;
     
-    // Define os tópicos baseados no ID
     String prefixo = "grupoX"; 
     myConfigTopic = prefixo + "/" + myDeviceId + "/config";
     myStatusTopic = prefixo + "/" + myDeviceId + "/status";
@@ -131,12 +123,11 @@ void setup() {
     Serial.println("---------------------------");
 
     // 3. CONFIGURAÇÃO MQTT
-    espClient.setInsecure(); // Aceita certificados autoassinados/inválidos
+    espClient.setInsecure();
     client.setServer(mqtt_server, mqtt_port);
     client.setCallback(callback); 
 
     // 4. INICIALIZA O GERENCIADOR
-    // Passamos o cliente MQTT e o ID único deste dispositivo
     sensorManagerSetup(&client, myDeviceId);
 }
 
@@ -149,5 +140,5 @@ void loop() {
     // Roda o loop de todos os sensores ativos
     sensorManagerLoop();
     
-    delay(10); // Pequeno delay para estabilidade
+    delay(10);
 }

@@ -20,7 +20,6 @@ private:
     String _topic;
     PubSubClient* _client;
 
-    // --- NOVO: Variável para armazenar a senha temporária ---
     String _bufferSenha; 
 
 public:

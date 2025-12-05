@@ -24,14 +24,14 @@
 // --- Estrutura para o Registro de Duplicidade ---
 struct SensorRegistryItem {
     String type;
-    int pins[8]; // Suporta até 8 pinos (Keypad)
+    int pins[8];
     int pinCount;
     bool active;
 };
 
 // --- Variáveis Internas ---
 static Sensor* sensores[MAX_SENSORES];
-static SensorRegistryItem registry[MAX_SENSORES]; // Lista paralela para verificação
+static SensorRegistryItem registry[MAX_SENSORES];
 static int numSensores = 0;
 static PubSubClient* _mqttClient;
 static bool irReceiverActive = false;
@@ -58,13 +58,10 @@ bool sensorJaExiste(String tipo, JsonArray pinArray) {
 
     // Varre o registro atual
     for(int i=0; i < numSensores; i++) {
-        // 1. Verifica se o slot está ativo e se o tipo é o mesmo
         if (registry[i].active && registry[i].type == tipo) {
             
-            // 2. Verifica se a quantidade de pinos é a mesma
             if (registry[i].pinCount == qtdPinosChegando) {
                 
-                // 3. Verifica se TODOS os pinos são iguais
                 bool pinosIguais = true;
                 for(int j=0; j < qtdPinosChegando; j++) {
                     if (registry[i].pins[j] != pinArray[j].as<int>()) {
@@ -109,7 +106,6 @@ void addSensor(JsonObject config) {
     // --- PASSO 1: Verifica Duplicidade ---
     if (sensorJaExiste(tipo, pinArray)) {
         Serial.printf("[Manager] Ignorando duplicado: %s\n", tipo.c_str());
-        // Envia OK para o backend não achar que deu erro, mas avisa que já existe
         String msg = "OK: " + tipo + " ja existe (ignorado)";
         _mqttClient->publish(topic_config_response, msg.c_str());
         return; 
@@ -158,7 +154,7 @@ void addSensor(JsonObject config) {
 
         // --- REGISTRA E INCREMENTA ---
         sensores[numSensores]->setup();
-        registrarSensor(tipo, pinArray); // <--- Salva no registro
+        registrarSensor(tipo, pinArray);
         numSensores++;
         
         String msg = "OK: " + tipo + " adicionado no pino " + String(pino);
